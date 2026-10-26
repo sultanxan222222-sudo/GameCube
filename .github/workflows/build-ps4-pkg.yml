@@ -157,21 +157,23 @@ jobs:
           # Search all Meson build files because Mesa moved this probe between versions.
           python3 - <<'PY'
           import os
-          import re
           from pathlib import Path
           root = Path(os.environ["PSB"]) / "src/mesa"
-          pattern = re.compile(r"""^([ \\t]*)(['"]qsort_s['"]\\s*:\\s*.*?,?)\\s*$""", re.MULTILINE)
           changed = []
           for p in root.rglob("meson.build"):
-              s = p.read_text(errors="replace")
-              updated, count = pattern.subn(
-                  r"\\1# PS4/OpenOrbis has no qsort_s; use Mesa fallback (disabled): \\2", s
-              )
+              lines = p.read_text(errors="replace").splitlines(keepends=True)
+              updated = []
+              count = 0
+              for line in lines:
+                  if "qsort_s" in line and ":" in line and not line.lstrip().startswith("#"):
+                      updated.append("# PS4/OpenOrbis fallback: " + line)
+                      count += 1
+                  else:
+                      updated.append(line)
               if count:
-                  p.write_text(updated)
+                  p.write_text("".join(updated))
                   changed.append((str(p), count))
           if not changed:
-              # Print likely locations to make future failures diagnosable.
               hits = [str(p) for p in root.rglob("meson.build") if "qsort_s" in p.read_text(errors="replace")]
               raise SystemExit("qsort_s probe not found in Meson build files; candidate files: " + repr(hits))
           print("Disabled Mesa qsort_s probe:", changed)
