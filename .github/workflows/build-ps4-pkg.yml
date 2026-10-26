@@ -213,15 +213,16 @@ jobs:
           if not build.is_file():
               raise SystemExit("Dolphin build.ninja missing after configuration")
           text = build.read_text()
-          # Host include paths are a known cross-compile hazard, but some clean
-          # configurations correctly omit them already. Remove only if present.
-          if "-I/usr/include" in text:
-              build.write_text(text.replace(" -I/usr/include", ""))
-              if "-I/usr/include" in build.read_text():
-                  raise SystemExit("Host include removal did not complete")
-              print("Removed incompatible host /usr/include from PS4 cross-compile commands")
-          else:
-              print("No leaked host /usr/include path detected; keeping clean build flags")
+          # Host include paths are a cross-compile hazard. In particular,
+          # -isystem /usr/include makes PS4 compilation consume the host glibc
+          # headers instead of the target sysroot headers.
+          for flag in (" -I/usr/include", " -isystem /usr/include"):
+              text = text.replace(flag, "")
+          build.write_text(text)
+          final_text = build.read_text()
+          if "-I/usr/include" in final_text or "-isystem /usr/include" in final_text:
+              raise SystemExit("Host /usr/include path remains in PS4 cross-compile commands")
+          print("Removed incompatible host /usr/include paths from PS4 cross-compile commands")
           PY
           bash scripts/build-dolphin.sh
 
