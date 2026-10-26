@@ -31,31 +31,25 @@ jobs:
       - name: Install host build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y             build-essential git curl wget cmake ninja-build python3 python3-pip python3-venv             pkg-config meson python3-mako glslang-tools libxml2 libxml2-dev libgpgme-dev             libarchive-tools autoconf libtool nasm zlib1g-dev libffi-dev
+          sudo apt-get install -y build-essential git curl wget cmake ninja-build python3 python3-pip python3-venv pkg-config meson python3-mako glslang-tools libxml2 libxml2-dev libgpgme-dev libarchive-tools autoconf libtool nasm zlib1g-dev libffi-dev
           python3 -m pip install --break-system-packages Pillow PyYAML mako
 
       - name: Install official OpenOrbis PS4 toolchain
         shell: bash
         run: |
           set -euxo pipefail
-          # PacBrew's package mirror is offline; use the official, versioned OpenOrbis release.
           TOOLCHAIN_URL="https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/releases/download/v0.5.4/toolchain-llvm-18.tar.gz"
           TOOLCHAIN_SHA256="3c7cd5bb593ca74fa1c13fd59f3938dc0fc07985167f7275063019e63abe4526"
           curl --fail --location --retry 4 --retry-all-errors "$TOOLCHAIN_URL" -o /tmp/openorbis.tar.gz
           echo "$TOOLCHAIN_SHA256  /tmp/openorbis.tar.gz" | sha256sum --check -
           sudo mkdir -p /opt/pacbrew/ps4/openorbis
           sudo tar -xzf /tmp/openorbis.tar.gz -C /opt/pacbrew/ps4/openorbis
-          # Release archives may contain a single top-level directory. Flatten it only
-          # when the expected SDK files are nested exactly one level down.
           if [ ! -d /opt/pacbrew/ps4/openorbis/include ]; then
             SDK_ROOT="$(find /opt/pacbrew/ps4/openorbis -mindepth 2 -maxdepth 3 -type d -name include -print -quit | xargs -r dirname)"
-            if [ -n "$SDK_ROOT" ]; then
-              sudo cp -a "$SDK_ROOT"/. /opt/pacbrew/ps4/openorbis/
-            fi
+            if [ -n "$SDK_ROOT" ]; then sudo cp -a "$SDK_ROOT"/. /opt/pacbrew/ps4/openorbis/; fi
           fi
           test -d /opt/pacbrew/ps4/openorbis/include
           test -d /opt/pacbrew/ps4/openorbis/lib
-          # The upstream packaging script expects create-fself at bin/create-fself.
           if [ ! -x /opt/pacbrew/ps4/openorbis/bin/create-fself ]; then
             FSELF="$(find /opt/pacbrew/ps4/openorbis -type f -name create-fself -perm -u+x -print -quit)"
             test -n "$FSELF"
@@ -64,7 +58,6 @@ jobs:
           sudo chmod +x /opt/pacbrew/ps4/openorbis/bin/create-fself
           echo "OPENORBIS=/opt/pacbrew/ps4/openorbis" >> "$GITHUB_ENV"
           echo "/opt/pacbrew/ps4/openorbis/bin" >> "$GITHUB_PATH"
-          echo "OpenOrbis SDK files:"
           ls -la /opt/pacbrew/ps4/openorbis
           /opt/pacbrew/ps4/openorbis/bin/create-fself --help || true
 
@@ -83,14 +76,8 @@ jobs:
         run: |
           set -euxo pipefail
           git clone --recurse-submodules https://github.com/iHaiDeeZ/DolphinPS4.git dolphinps4
-          # Git checkout may not preserve executable bits for upstream helper scripts.
-          # Restore them recursively so scripts can call prepare-sysroot.sh and other helpers.
           find dolphinps4/toolchain dolphinps4/scripts -type f -name "*.sh" -exec chmod +x {} +
-          # Restore execute bits on bundled PS4 compiler/linker wrappers as well.
           if [ -d dolphinps4/toolchain/bin ]; then find dolphinps4/toolchain/bin -type f -exec chmod +x {} +; fi
-          # The upstream scripts target PacBrew, whose ps4vars.sh is not included
-          # in the official OpenOrbis release used above. Make the environment
-          # bootstrap compatible with the official SDK without hiding real errors.
           python3 - <<'PY'
           from pathlib import Path
           p = Path("dolphinps4/scripts/ps4-env.sh")
@@ -103,38 +90,25 @@ jobs:
               export OO_PS4_TOOLCHAIN="$OPENORBIS"
               export PATH="$OPENORBIS/bin:$PATH"
           fi'''
-          if old not in s:
-              raise SystemExit("Expected ps4-env.sh source line not found; refusing an unsafe patch")
+          if old not in s: raise SystemExit("Expected ps4-env.sh source line not found")
           p.write_text(s.replace(old, new, 1))
-
-          # The official OpenOrbis release does not ship PacBrew's host ld.lld.
-          # Guard the optional PacBrew-specific ldd check and use LLVM's installed
-          # linker by name (clang rejects an absolute path in -fuse-ld=).
           p = Path("dolphinps4/scripts/ps4-env.sh")
           s = p.read_text()
           old = 'if ldd "$OPENORBIS/bin/ld.lld" | grep -q "libxml2.so.2 => not found"; then'
           new = 'if [ -x "$OPENORBIS/bin/ld.lld" ] && ldd "$OPENORBIS/bin/ld.lld" | grep -q "libxml2.so.2 => not found"; then'
-          if old not in s:
-              raise SystemExit("Expected PacBrew linker compatibility check not found; refusing an unsafe patch")
+          if old not in s: raise SystemExit("Expected PacBrew linker check not found")
           p.write_text(s.replace(old, new, 1))
-
           p = Path("dolphinps4/scripts/build-mesa.sh")
           s = p.read_text()
           old = "'-fuse-ld=$OPENORBIS/bin/ld.lld'"
           new = "'-fuse-ld=lld'"
-          if old not in s:
-              raise SystemExit("Expected Mesa linker flag not found; refusing an unsafe patch")
+          if old not in s: raise SystemExit("Expected Mesa linker flag not found")
           p.write_text(s.replace(old, new, 1))
-
-          # The upstream modern toolchain includes PacBrew-only cmake/ps4.cmake,
-          # absent from the official OpenOrbis SDK. Use DolphinPS4's self-contained
-          # OpenOrbis toolchain and adapt love-style linker options for clang's driver.
           modern = Path("dolphinps4/toolchain/ps4-love-modern.cmake")
           base = Path("dolphinps4/toolchain/ps4-dolphin.cmake")
           if not base.is_file() or "set(CMAKE_C_LINK_EXECUTABLE" not in base.read_text():
               raise SystemExit("Self-contained ps4-dolphin.cmake is missing or unexpected")
           modern.write_text(base.read_text())
-
           style = Path("dolphinps4/toolchain/ps4-love-style.cmake")
           st = style.read_text()
           replacements = {
@@ -150,18 +124,15 @@ jobs:
               'string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,--wrap=clock_gettime")',
           }
           for old, new in replacements.items():
-              if old not in st:
-                  raise SystemExit("Expected linker option not found in ps4-love-style.cmake: " + old)
+              if old not in st: raise SystemExit("Expected linker option not found: " + old)
               st = st.replace(old, new, 1)
           style.write_text(st)
           PY
-          # Assert the generated Mesa cross-file never references the missing PacBrew linker.
           grep -n -- "fuse-ld" dolphinps4/scripts/build-mesa.sh
           if grep -q -- "-fuse-ld=\\$OPENORBIS/bin/ld.lld" dolphinps4/scripts/build-mesa.sh; then
             sed -i "s|-fuse-ld=\\$OPENORBIS/bin/ld.lld|-fuse-ld=lld|g" dolphinps4/scripts/build-mesa.sh
           fi
           ! grep -q -- "-fuse-ld=\\$OPENORBIS/bin/ld.lld" dolphinps4/scripts/build-mesa.sh
-          grep -n -- "fuse-ld" dolphinps4/scripts/build-mesa.sh
           git -C dolphinps4 rev-parse HEAD
           install -D custom/xmb/lang/ru.ini dolphinps4/xmb/lang/ru.ini
 
@@ -182,8 +153,6 @@ jobs:
           python3 "$GITHUB_WORKSPACE/custom/patches/enable-usb-game-discovery.py"
           cd "$GITHUB_WORKSPACE"
           git clone --depth 1 --branch mesa-26.0.8 https://gitlab.freedesktop.org/mesa/mesa.git "$PSB/src/mesa"
-          # Mesa's generic qsort_s probe incorrectly enables HAVE_QSORT_S for PS4.
-          # Search all Meson build files because Mesa moved this probe between versions.
           python3 - <<'PY'
           import os
           from pathlib import Path
@@ -233,31 +202,26 @@ jobs:
         run: |
           set -euxo pipefail
           cd "$GITHUB_WORKSPACE/dolphinps4"
-          # Zstandard is optional for minizip-ng. This PS4 cross-build has no
-          # Zstd library/header in the OpenOrbis sysroot, so disable it explicitly
-          # rather than accidentally enabling host-only support.
           bash scripts/configure-dolphin.sh -DMZ_ZSTD=OFF
-          # Verify the optional Zstd codec did not leak into the PS4 compile flags.
           if grep -q -- '-DHAVE_ZSTD' "$PSB/build/dolphin/build.ninja"; then
             echo "Zstandard remained enabled after -DMZ_ZSTD=OFF; refusing an invalid cross-build"
             exit 1
           fi
-          # CMake's host-side probes can leak /usr/include into cross-compile commands.
-          # Those glibc headers are incompatible with the PS4 FreeBSD target and break
-          # minizip (bits/libc-header-start.h). Remove the host include from generated
-          # Ninja commands; PS4 headers come from the explicit OpenOrbis/sysroot paths.
           python3 - <<'PY'
           from pathlib import Path
           build = Path.home() / "dolphinps4-build/build/dolphin/build.ninja"
           if not build.is_file():
               raise SystemExit("Dolphin build.ninja missing after configuration")
           text = build.read_text()
-          if "-I/usr/include" not in text:
-              raise SystemExit("Expected leaked host include not found in build.ninja; inspect configure output")
-          build.write_text(text.replace(" -I/usr/include", ""))
-          if "-I/usr/include" in build.read_text():
-              raise SystemExit("Host include removal did not complete")
-          print("Removed incompatible host /usr/include from PS4 cross-compile commands")
+          # Host include paths are a known cross-compile hazard, but some clean
+          # configurations correctly omit them already. Remove only if present.
+          if "-I/usr/include" in text:
+              build.write_text(text.replace(" -I/usr/include", ""))
+              if "-I/usr/include" in build.read_text():
+                  raise SystemExit("Host include removal did not complete")
+              print("Removed incompatible host /usr/include from PS4 cross-compile commands")
+          else:
+              print("No leaked host /usr/include path detected; keeping clean build flags")
           PY
           bash scripts/build-dolphin.sh
 
