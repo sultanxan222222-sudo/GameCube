@@ -218,14 +218,14 @@ jobs:
           # headers instead of target sysroot headers.
           for flag in (" -I/usr/include", " -isystem /usr/include"):
               text = text.replace(flag, "")
-          # Dolphin's bundled Zstandard headers live in Externals/zstd/lib.
-          # Ensure DiscIO can see them in this cross-build; do not expose the
-          # host's /usr/include or link against host libraries.
-          zstd_header = Path.home() / "dolphinps4-build/src/dolphin/Externals/zstd/lib/zstd.h"
-          if not zstd_header.is_file():
-              raise SystemExit("Bundled Dolphin Zstandard header missing: " + str(zstd_header))
-          zstd_include = str(zstd_header.parent)
-          text = text.replace("clang++-21 ", "clang++-21 -I" + zstd_include + " ")
+          # Locate zstd.h by actual submodule layout instead of assuming lib/zstd.h.
+          candidates = sorted((p for p in (Path.home() / "dolphinps4-build/src/dolphin").rglob("zstd.h") if ".git" not in p.parts), key=lambda p: len(str(p)))
+          if candidates:
+              zstd_include = str(candidates[0].parent)
+              text = text.replace("clang++-21 ", "clang++-21 -I" + zstd_include + " ")
+              print("Found Zstandard header:", candidates[0])
+          else:
+              print("No zstd.h found in Dolphin source/submodules; continue to let compiler report whether it is required")
           build.write_text(text)
           final_text = build.read_text()
           if "-I/usr/include" in final_text or "-isystem /usr/include" in final_text:
