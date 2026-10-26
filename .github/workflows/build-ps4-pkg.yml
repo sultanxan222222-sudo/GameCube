@@ -83,6 +83,9 @@ jobs:
         run: |
           set -euxo pipefail
           git clone --recurse-submodules https://github.com/iHaiDeeZ/DolphinPS4.git dolphinps4
+          # Git checkout may not preserve executable bits for upstream helper scripts.
+          # Restore them recursively so scripts can call prepare-sysroot.sh and other helpers.
+          find dolphinps4/toolchain dolphinps4/scripts -type f -name "*.sh" -exec chmod +x {} +
           git -C dolphinps4 rev-parse HEAD
           install -D custom/xmb/lang/ru.ini dolphinps4/xmb/lang/ru.ini
 
