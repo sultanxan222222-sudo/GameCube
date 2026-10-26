@@ -111,8 +111,8 @@ jobs:
         run: |
           set -euxo pipefail
           cd "$GITHUB_WORKSPACE/dolphinps4"
-          toolchain/build-libcxx.sh
-          toolchain/build-runtime.sh
+          bash toolchain/build-libcxx.sh
+          bash toolchain/build-runtime.sh
 
       - name: Build Mesa RADV for PS4
         shell: bash
@@ -122,22 +122,22 @@ jobs:
           python3 -m venv "$PSB/mesa-venv"
           "$PSB/mesa-venv/bin/pip" install meson mako PyYAML
           export PATH="$PSB/mesa-venv/bin:$PATH"
-          scripts/build-mesa.sh setup
+          bash scripts/build-mesa.sh setup
 
       - name: Configure and compile Dolphin
         shell: bash
         run: |
           set -euxo pipefail
           cd "$GITHUB_WORKSPACE/dolphinps4"
-          scripts/configure-dolphin.sh
-          scripts/build-dolphin.sh
+          bash scripts/configure-dolphin.sh
+          bash scripts/build-dolphin.sh
 
       - name: Package PKG and calculate checksum
         shell: bash
         run: |
           set -euxo pipefail
           cd "$GITHUB_WORKSPACE/dolphinps4"
-          DOLPHIN_PS4_VERSION=01.00 scripts/package-dolphin.sh
+          DOLPHIN_PS4_VERSION=01.00 bash scripts/package-dolphin.sh
           PKG="$(find "$PSB/out" -maxdepth 1 -type f -name '*.pkg' -print -quit)"
           test -n "$PKG"
           test -s "$PKG"
