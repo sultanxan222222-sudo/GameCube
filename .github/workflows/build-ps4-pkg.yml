@@ -126,6 +126,13 @@ jobs:
               raise SystemExit("Expected Mesa linker flag not found; refusing an unsafe patch")
           p.write_text(s.replace(old, new, 1))
           PY
+          # Assert the generated Mesa cross-file never references the missing PacBrew linker.
+          grep -n -- "fuse-ld" dolphinps4/scripts/build-mesa.sh
+          if grep -q -- "-fuse-ld=\\$OPENORBIS/bin/ld.lld" dolphinps4/scripts/build-mesa.sh; then
+            sed -i "s|-fuse-ld=\\$OPENORBIS/bin/ld.lld|-fuse-ld=lld|g" dolphinps4/scripts/build-mesa.sh
+          fi
+          ! grep -q -- "-fuse-ld=\\$OPENORBIS/bin/ld.lld" dolphinps4/scripts/build-mesa.sh
+          grep -n -- "fuse-ld" dolphinps4/scripts/build-mesa.sh
           git -C dolphinps4 rev-parse HEAD
           install -D custom/xmb/lang/ru.ini dolphinps4/xmb/lang/ru.ini
 
