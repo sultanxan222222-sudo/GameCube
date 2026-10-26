@@ -234,6 +234,23 @@ jobs:
           set -euxo pipefail
           cd "$GITHUB_WORKSPACE/dolphinps4"
           bash scripts/configure-dolphin.sh
+          # CMake's host-side probes can leak /usr/include into cross-compile commands.
+          # Those glibc headers are incompatible with the PS4 FreeBSD target and break
+          # minizip (bits/libc-header-start.h). Remove the host include from generated
+          # Ninja commands; PS4 headers come from the explicit OpenOrbis/sysroot paths.
+          python3 - <<'PY'
+          from pathlib import Path
+          build = Path.home() / "dolphinps4-build/build/dolphin/build.ninja"
+          if not build.is_file():
+              raise SystemExit("Dolphin build.ninja missing after configuration")
+          text = build.read_text()
+          if "-I/usr/include" not in text:
+              raise SystemExit("Expected leaked host include not found in build.ninja; inspect configure output")
+          build.write_text(text.replace(" -I/usr/include", ""))
+          if "-I/usr/include" in build.read_text():
+              raise SystemExit("Host include removal did not complete")
+          print("Removed incompatible host /usr/include from PS4 cross-compile commands")
+          PY
           bash scripts/build-dolphin.sh
 
       - name: Package PKG and calculate checksum
