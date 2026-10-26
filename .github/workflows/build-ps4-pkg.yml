@@ -39,6 +39,10 @@ jobs:
           set -euxo pipefail
           wget -q https://github.com/PacBrew/pacbrew-pacman/releases/download/pacbrew-release-1.0/pacbrew-pacman-1.0.deb -O /tmp/pacbrew-pacman.deb
           sudo dpkg -i /tmp/pacbrew-pacman.deb || sudo apt-get -f install -y
+          # PacBrew's bundled pacman still links against OpenSSL 1.1 on Ubuntu 24.04.
+          wget -q https://archive.ubuntu.com/ubuntu/pool/main/o/openssl/libssl1.1_1.1.1f-1ubuntu2.24_amd64.deb -O /tmp/libssl1.1.deb
+          sudo dpkg -i /tmp/libssl1.1.deb
+          sudo ldconfig
           sudo pacbrew-pacman -Sy --noconfirm
           sudo pacbrew-pacman --noconfirm -S ps4-openorbis ps4-openorbis-portlibs
           test -f /opt/pacbrew/ps4/openorbis/ps4vars.sh
