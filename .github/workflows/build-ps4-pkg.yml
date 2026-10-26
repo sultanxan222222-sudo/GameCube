@@ -1,0 +1,131 @@
+name: Build DolphinPS4 PKG
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - work/dolphinps4-integration
+    paths:
+      - 'xmb/**'
+      - '.github/workflows/build-ps4-pkg.yml'
+      - 'BUILD_STATUS.md'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dolphinps4-pkg-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - name: Checkout project customizations
+        uses: actions/checkout@v4
+        with:
+          path: custom
+
+      - name: Install host build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y             build-essential git curl wget cmake ninja-build python3 python3-pip python3-venv             pkg-config meson mako glslang-tools libxml2 libxml2-dev libgpgme-dev             libarchive-tools autoconf libtool nasm zlib1g-dev libffi-dev             pacman-package-manager makepkg
+          python3 -m pip install --break-system-packages Pillow PyYAML mako
+
+      - name: Install PacBrew PS4 toolchain
+        shell: bash
+        run: |
+          set -euxo pipefail
+          wget -q https://github.com/PacBrew/pacbrew-pacman/releases/download/pacbrew-release-1.0/pacbrew-pacman-1.0.deb -O /tmp/pacbrew-pacman.deb
+          sudo dpkg -i /tmp/pacbrew-pacman.deb || sudo apt-get -f install -y
+          sudo pacbrew-pacman -Sy --noconfirm
+          sudo pacbrew-pacman --noconfirm -S ps4-openorbis ps4-openorbis-portlibs
+          test -f /opt/pacbrew/ps4/openorbis/ps4vars.sh
+          echo 'OPENORBIS=/opt/pacbrew/ps4/openorbis' >> "$GITHUB_ENV"
+          echo '/opt/pacbrew/ps4/openorbis/bin' >> "$GITHUB_PATH"
+
+      - name: Install LLVM 21
+        shell: bash
+        run: |
+          set -euxo pipefail
+          wget -q https://apt.llvm.org/llvm.sh -O /tmp/llvm.sh
+          chmod +x /tmp/llvm.sh
+          sudo /tmp/llvm.sh 21
+          sudo apt-get install -y clang-21 lld-21 llvm-21
+          clang-21 --version
+
+      - name: Fetch DolphinPS4 source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git clone --recurse-submodules https://github.com/iHaiDeeZ/DolphinPS4.git dolphinps4
+          git -C dolphinps4 rev-parse HEAD
+          install -D custom/xmb/lang/ru.ini dolphinps4/xmb/lang/ru.ini
+
+      - name: Prepare PS4 build tree
+        shell: bash
+        run: |
+          set -euxo pipefail
+          export PSB="$HOME/dolphinps4-build"
+          mkdir -p "$PSB/src" "$PSB/out"
+          ln -s "$GITHUB_WORKSPACE/dolphinps4" "$PSB/project"
+          echo "PSB=$PSB" >> "$GITHUB_ENV"
+          echo "PS4_BUILD_ROOT=$PSB" >> "$GITHUB_ENV"
+          git clone https://github.com/dolphin-emu/dolphin.git "$PSB/src/dolphin"
+          git -C "$PSB/src/dolphin" checkout 771fb154059c5812d6a715a23226249cc42877a2
+          git -C "$PSB/src/dolphin" submodule update --init --recursive
+          git -C "$PSB/src/dolphin" apply "$GITHUB_WORKSPACE/dolphinps4/patches/dolphin-ps4.patch"
+          git clone --depth 1 --branch mesa-26.0.8 https://gitlab.freedesktop.org/mesa/mesa.git "$PSB/src/mesa"
+          git -C "$PSB/src/mesa" apply "$GITHUB_WORKSPACE/dolphinps4/patches/mesa-ps4.patch"
+          git clone --depth 1 https://gitlab.freedesktop.org/mesa/drm.git "$PSB/src/libdrm"
+
+      - name: Build PS4 C++ runtime
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd "$GITHUB_WORKSPACE/dolphinps4"
+          toolchain/build-libcxx.sh
+          toolchain/build-runtime.sh
+
+      - name: Build Mesa RADV for PS4
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd "$GITHUB_WORKSPACE/dolphinps4"
+          python3 -m venv "$PSB/mesa-venv"
+          "$PSB/mesa-venv/bin/pip" install meson mako PyYAML
+          export PATH="$PSB/mesa-venv/bin:$PATH"
+          scripts/build-mesa.sh setup
+
+      - name: Configure and compile Dolphin
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd "$GITHUB_WORKSPACE/dolphinps4"
+          scripts/configure-dolphin.sh
+          scripts/build-dolphin.sh
+
+      - name: Package PKG and calculate checksum
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd "$GITHUB_WORKSPACE/dolphinps4"
+          DOLPHIN_PS4_VERSION=01.00 scripts/package-dolphin.sh
+          PKG="$(find "$PSB/out" -maxdepth 1 -type f -name '*.pkg' -print -quit)"
+          test -n "$PKG"
+          test -s "$PKG"
+          sha256sum "$PKG" | tee "$PSB/out/SHA256SUMS.txt"
+          stat --printf='PKG_SIZE_BYTES=%s\n' "$PKG" | tee "$PSB/out/BUILD_INFO.txt"
+          printf 'SOURCE_COMMIT=%s\n' "$(git -C "$GITHUB_WORKSPACE/dolphinps4" rev-parse HEAD)" >> "$PSB/out/BUILD_INFO.txt"
+
+      - name: Upload installable PKG
+        uses: actions/upload-artifact@v4
+        with:
+          name: GameCube-PS4Pro-PKG
+          path: |
+            ~/dolphinps4-build/out/*.pkg
+            ~/dolphinps4-build/out/SHA256SUMS.txt
+            ~/dolphinps4-build/out/BUILD_INFO.txt
+          if-no-files-found: error
+          retention-days: 14
