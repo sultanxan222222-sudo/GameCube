@@ -153,6 +153,19 @@ jobs:
           python3 "$GITHUB_WORKSPACE/custom/patches/enable-usb-game-discovery.py"
           cd "$GITHUB_WORKSPACE"
           git clone --depth 1 --branch mesa-26.0.8 https://gitlab.freedesktop.org/mesa/mesa.git "$PSB/src/mesa"
+          # Mesa's generic qsort_s probe incorrectly enables HAVE_QSORT_S for the PS4
+          # cross target; the OpenOrbis libc does not declare that API. Disable only
+          # this feature probe so u_qsort.h selects its portable TLS fallback.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("$PSB/src/mesa/meson.build")
+          s = p.read_text()
+          old = "      'qsort_s': '',"
+          new = "      # PS4/OpenOrbis libc has no qsort_s declaration; use Mesa's fallback."
+          if old not in s:
+              raise SystemExit("Expected Mesa qsort_s feature probe not found; refusing an unsafe patch")
+          p.write_text(s.replace(old, new, 1))
+          PY
           git -C "$PSB/src/mesa" apply "$GITHUB_WORKSPACE/dolphinps4/patches/mesa-ps4.patch"
           git clone --depth 1 https://gitlab.freedesktop.org/mesa/drm.git "$PSB/src/libdrm"
 
