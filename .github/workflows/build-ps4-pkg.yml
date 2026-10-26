@@ -34,48 +34,39 @@ jobs:
           sudo apt-get install -y             build-essential git curl wget cmake ninja-build python3 python3-pip python3-venv             pkg-config meson python3-mako glslang-tools libxml2 libxml2-dev libgpgme-dev             libarchive-tools autoconf libtool nasm zlib1g-dev libffi-dev             pacman-package-manager makepkg
           python3 -m pip install --break-system-packages Pillow PyYAML mako
 
-      - name: Install PacBrew PS4 toolchain
+      - name: Install official OpenOrbis PS4 toolchain
         shell: bash
         run: |
           set -euxo pipefail
-          wget -q https://github.com/PacBrew/pacbrew-pacman/releases/download/pacbrew-release-1.0/pacbrew-pacman-1.0.deb -O /tmp/pacbrew-pacman.deb
-          sudo dpkg -i /tmp/pacbrew-pacman.deb || sudo apt-get -f install -y
-          # PacBrew's bundled pacman still links against OpenSSL 1.1 on Ubuntu 24.04.
-          wget -q https://archive.ubuntu.com/ubuntu/pool/main/o/openssl/libssl1.1_1.1.1f-1ubuntu2.24_amd64.deb -O /tmp/libssl1.1.deb
-          sudo dpkg -i /tmp/libssl1.1.deb
-          sudo ldconfig
-          # PacBrew uses its own configuration, not necessarily /etc/pacman.conf.
-          # Locate PacBrew's actual config and mirror list, then fix the stale HTTP URL.
-          echo 'PacBrew executable and configuration files:'
-          command -v pacbrew-pacman
-          sudo find /opt/pacbrew /etc -type f \( -name 'pacman.conf' -o -iname '*mirrorlist*' \) -print 2>/dev/null | tee /tmp/pacbrew-config-files.txt
-          while IFS= read -r cfg; do
-            sudo grep -q 'pacman.mydedibox.fr' "$cfg" 2>/dev/null || continue
-            echo "Updating PacBrew mirror in $cfg"
-            sudo sed -i 's#http://pacman.mydedibox.fr#https://pacman.mydedibox.fr#g' "$cfg"
-          done < /tmp/pacbrew-config-files.txt
-          echo 'Mirror settings after update:'
-          sudo grep -RIn 'pacman.mydedibox.fr\|XferCommand' /opt/pacbrew /etc/pacbrew /etc/pacman.conf 2>/dev/null || true
-          echo 'Testing HTTPS mirror (legacy mirror has a self-signed certificate):'
-          curl -k -IL --max-time 20 https://pacman.mydedibox.fr/pacbrew/packages/ 2>&1
-          # PacBrew's legacy mirror has a self-signed TLS certificate. Configure
-          # pacman to fetch through curl with certificate verification disabled.
-          # This is scoped only to the temporary CI build runner.
-          PACCONF="$(sudo find /opt/pacbrew /etc -type f -name 'pacman.conf' -print 2>/dev/null | head -n 1)"
-          if [ -z "$PACCONF" ]; then
-            echo 'ERROR: PacBrew pacman.conf was not found' >&2
-            exit 1
+          # PacBrew's package mirror is offline; use the official, versioned OpenOrbis release.
+          TOOLCHAIN_URL="https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/releases/download/v0.5.4/toolchain-llvm-18.tar.gz"
+          TOOLCHAIN_SHA256="3c7cd5bb593ca74fa1c13fd59f3938dc0fc07985167f7275063019e63abe4526"
+          curl --fail --location --retry 4 --retry-all-errors "$TOOLCHAIN_URL" -o /tmp/openorbis.tar.gz
+          echo "$TOOLCHAIN_SHA256  /tmp/openorbis.tar.gz" | sha256sum --check -
+          sudo mkdir -p /opt/pacbrew/ps4/openorbis
+          sudo tar -xzf /tmp/openorbis.tar.gz -C /opt/pacbrew/ps4/openorbis
+          # Release archives may contain a single top-level directory. Flatten it only
+          # when the expected SDK files are nested exactly one level down.
+          if [ ! -d /opt/pacbrew/ps4/openorbis/include ]; then
+            SDK_ROOT="$(find /opt/pacbrew/ps4/openorbis -mindepth 2 -maxdepth 3 -type d -name include -print -quit | xargs -r dirname)"
+            if [ -n "$SDK_ROOT" ]; then
+              sudo cp -a "$SDK_ROOT"/. /opt/pacbrew/ps4/openorbis/
+            fi
           fi
-          if ! sudo grep -q '^XferCommand' "$PACCONF"; then
-            sudo sed -i '/^\[options\]/a XferCommand = /usr/bin/curl -k -L -f -o %o %u' "$PACCONF"
+          test -d /opt/pacbrew/ps4/openorbis/include
+          test -d /opt/pacbrew/ps4/openorbis/lib
+          # The upstream packaging script expects create-fself at bin/create-fself.
+          if [ ! -x /opt/pacbrew/ps4/openorbis/bin/create-fself ]; then
+            FSELF="$(find /opt/pacbrew/ps4/openorbis -type f -name create-fself -perm -u+x -print -quit)"
+            test -n "$FSELF"
+            sudo ln -sf "$FSELF" /opt/pacbrew/ps4/openorbis/bin/create-fself
           fi
-          echo "Using PacBrew config: $PACCONF"
-          sudo grep -nE '^\[options\]|^XferCommand|pacman.mydedibox.fr' "$PACCONF" || true
-          sudo pacbrew-pacman -Sy --noconfirm
-          sudo pacbrew-pacman --noconfirm -S ps4-openorbis ps4-openorbis-portlibs
-          test -f /opt/pacbrew/ps4/openorbis/ps4vars.sh
-          echo 'OPENORBIS=/opt/pacbrew/ps4/openorbis' >> "$GITHUB_ENV"
-          echo '/opt/pacbrew/ps4/openorbis/bin' >> "$GITHUB_PATH"
+          sudo chmod +x /opt/pacbrew/ps4/openorbis/bin/create-fself
+          echo "OPENORBIS=/opt/pacbrew/ps4/openorbis" >> "$GITHUB_ENV"
+          echo "/opt/pacbrew/ps4/openorbis/bin" >> "$GITHUB_PATH"
+          echo "OpenOrbis SDK files:"
+          ls -la /opt/pacbrew/ps4/openorbis
+          /opt/pacbrew/ps4/openorbis/bin/create-fself --help || true
 
       - name: Install LLVM 21
         shell: bash
