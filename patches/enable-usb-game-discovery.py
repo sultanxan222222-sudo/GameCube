@@ -9,15 +9,10 @@ from pathlib import Path
 
 source = Path("Source/Core/DolphinNoGUI/PS4XMB.cpp")
 text = source.read_text()
-old = """  std::error_code error;
-  std::filesystem::directory_iterator it(games_dir, error);
-  if (error)
-    Platform::BootTrace(("library: can't read " + games_dir + ": " + error.message()).c_str());
-  for (const auto& entry : it)
-  {"""
-new = """  std::error_code error;
-  // Search the configured internal games folder and PS4-visible USB mount points.
-  // Recursive traversal allows users to keep games in subfolders without browsing manually.
+# Patch stable, small anchors rather than depending on the whole iterator block's formatting.
+needle = "  std::filesystem::directory_iterator it(games_dir, error);"
+if needle in text:
+    replacement = """  // Search the configured folder plus PS4-visible USB mounts, including subfolders.
   std::vector<std::filesystem::directory_entry> entries;
   std::vector<std::string> roots = {games_dir};
   for (int i = 0; i < 8; ++i)
@@ -29,10 +24,7 @@ new = """  std::error_code error;
   {
     std::error_code root_error;
     if (!std::filesystem::is_directory(root, root_error))
-    {
-      Platform::BootTrace(("library: storage unavailable: " + root).c_str());
       continue;
-    }
     std::filesystem::recursive_directory_iterator it(
         root, std::filesystem::directory_options::skip_permission_denied, root_error);
     const std::filesystem::recursive_directory_iterator end;
@@ -47,19 +39,20 @@ new = """  std::error_code error;
       }
       it.increment(root_error);
       if (root_error)
-      {
-        Platform::BootTrace(("library: scan warning in " + root + ": " + root_error.message()).c_str());
         root_error.clear();
-      }
     }
   }
   std::sort(entries.begin(), entries.end(), [](const auto& a, const auto& b) {
     return a.path().string() < b.path().string();
-  });
-  for (const auto& entry : entries)
-  {"""
-if old not in text:
-    raise SystemExit("Expected ScanLibrary iterator block not found; refusing to modify unexpected source.")
-text = text.replace(old, new, 1)
-source.write_text(text)
-print("Applied recursive internal/USB game discovery.")
+  });"""
+    text = text.replace(needle, replacement, 1)
+    loop = "  for (const auto& entry : it)"
+    if loop not in text:
+      raise SystemExit("Iterator declaration found, but expected loop anchor is missing.")
+    text = text.replace(loop, "  for (const auto& entry : entries)", 1)
+    source.write_text(text)
+    print("Applied recursive internal/USB game discovery using stable anchors.")
+elif "std::vector<std::filesystem::directory_entry> entries;" in text and "for (const auto& entry : entries)" in text:
+    print("USB game discovery patch already applied.")
+else:
+    raise SystemExit("Could not find safe iterator anchor; no source changes made.")
