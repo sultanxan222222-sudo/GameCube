@@ -48,7 +48,7 @@ jobs:
           # Locate PacBrew's actual config and mirror list, then fix the stale HTTP URL.
           echo 'PacBrew executable and configuration files:'
           command -v pacbrew-pacman
-          sudo find /opt/pacbrew /etc -type f \\( -name 'pacman.conf' -o -iname '*mirrorlist*' \\) -print 2>/dev/null | tee /tmp/pacbrew-config-files.txt
+          sudo find /opt/pacbrew /etc -type f \( -name 'pacman.conf' -o -iname '*mirrorlist*' \) -print 2>/dev/null | tee /tmp/pacbrew-config-files.txt
           while IFS= read -r cfg; do
             sudo grep -q 'pacbrew.mydedibox.fr' "$cfg" 2>/dev/null || continue
             echo "Updating PacBrew mirror in $cfg"
@@ -67,10 +67,10 @@ jobs:
             exit 1
           fi
           if ! sudo grep -q '^XferCommand' "$PACCONF"; then
-            sudo sed -i '/^\\[options\\]/a XferCommand = /usr/bin/curl -k -L -f -o %o %u' "$PACCONF"
+            sudo sed -i '/^\[options\]/a XferCommand = /usr/bin/curl -k -L -f -o %o %u' "$PACCONF"
           fi
           echo "Using PacBrew config: $PACCONF"
-          sudo grep -nE '^\\[options\\]|^XferCommand|pacbrew.mydedibox.fr' "$PACCONF" || true
+          sudo grep -nE '^\[options\]|^XferCommand|pacbrew.mydedibox.fr' "$PACCONF" || true
           sudo pacbrew-pacman -Sy --noconfirm
           sudo pacbrew-pacman --noconfirm -S ps4-openorbis ps4-openorbis-portlibs
           test -f /opt/pacbrew/ps4/openorbis/ps4vars.sh
