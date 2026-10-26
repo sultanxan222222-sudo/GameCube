@@ -43,7 +43,16 @@ jobs:
           wget -q https://archive.ubuntu.com/ubuntu/pool/main/o/openssl/libssl1.1_1.1.1f-1ubuntu2.24_amd64.deb -O /tmp/libssl1.1.deb
           sudo dpkg -i /tmp/libssl1.1.deb
           sudo ldconfig
-          sudo pacbrew-pacman -Sy --noconfirm
+          # Prefer HTTPS for the PacBrew mirror; the HTTP endpoint timed out in CI.
+          if sudo grep -q 'pacbrew.mydedibox.fr/pacbrew/packages' /etc/pacman.conf; then
+            sudo sed -i 's#http://pacbrew.mydedibox.fr#https://pacbrew.mydedibox.fr#g' /etc/pacman.conf
+          fi
+          # Retry transient mirror failures rather than immediately aborting.
+          for attempt in 1 2 3; do
+            if sudo pacbrew-pacman -Sy --noconfirm; then break; fi
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            sleep 10
+          done
           sudo pacbrew-pacman --noconfirm -S ps4-openorbis ps4-openorbis-portlibs
           test -f /opt/pacbrew/ps4/openorbis/ps4vars.sh
           echo 'OPENORBIS=/opt/pacbrew/ps4/openorbis' >> "$GITHUB_ENV"
