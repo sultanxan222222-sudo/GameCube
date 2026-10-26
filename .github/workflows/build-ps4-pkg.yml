@@ -9,6 +9,7 @@ on:
       - 'xmb/**'
       - '.github/workflows/build-ps4-pkg.yml'
       - 'BUILD_STATUS.md'
+      - 'patches/**'
 
 permissions:
   contents: read
@@ -87,6 +88,7 @@ jobs:
           git -C "$PSB/src/dolphin" checkout 771fb154059c5812d6a715a23226249cc42877a2
           git -C "$PSB/src/dolphin" submodule update --init --recursive
           git -C "$PSB/src/dolphin" apply "$GITHUB_WORKSPACE/dolphinps4/patches/dolphin-ps4.patch"
+          python3 "$GITHUB_WORKSPACE/custom/patches/enable-usb-game-discovery.py"
           git clone --depth 1 --branch mesa-26.0.8 https://gitlab.freedesktop.org/mesa/mesa.git "$PSB/src/mesa"
           git -C "$PSB/src/mesa" apply "$GITHUB_WORKSPACE/dolphinps4/patches/mesa-ps4.patch"
           git clone --depth 1 https://gitlab.freedesktop.org/mesa/drm.git "$PSB/src/libdrm"
