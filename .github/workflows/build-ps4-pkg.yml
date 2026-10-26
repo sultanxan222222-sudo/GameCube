@@ -44,15 +44,13 @@ jobs:
           sudo dpkg -i /tmp/libssl1.1.deb
           sudo ldconfig
           # Prefer HTTPS for the PacBrew mirror; the HTTP endpoint timed out in CI.
-          if sudo grep -q 'pacbrew.mydedibox.fr/pacbrew/packages' /etc/pacman.conf; then
-            sudo sed -i 's#http://pacbrew.mydedibox.fr#https://pacbrew.mydedibox.fr#g' /etc/pacman.conf
-          fi
-          # Retry transient mirror failures rather than immediately aborting.
-          for attempt in 1 2 3; do
-            if sudo pacbrew-pacman -Sy --noconfirm; then break; fi
-            if [ "$attempt" -eq 3 ]; then exit 1; fi
-            sleep 10
-          done
+          sudo sed -i 's#http://pacbrew.mydedibox.fr#https://pacbrew.mydedibox.fr#g' /etc/pacman.conf
+          echo 'PacBrew mirror configuration:'
+          sudo grep -n 'pacbrew' /etc/pacman.conf || true
+          echo 'Testing PacBrew mirror endpoints:'
+          curl -IL --max-time 15 https://pacbrew.mydedibox.fr/pacbrew/packages/ 2>&1 || true
+          # Try synchronization with HTTPS first, then fail with diagnostic output.
+          sudo pacbrew-pacman -Sy --noconfirm
           sudo pacbrew-pacman --noconfirm -S ps4-openorbis ps4-openorbis-portlibs
           test -f /opt/pacbrew/ps4/openorbis/ps4vars.sh
           echo 'OPENORBIS=/opt/pacbrew/ps4/openorbis' >> "$GITHUB_ENV"
