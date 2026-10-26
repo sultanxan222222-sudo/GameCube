@@ -153,19 +153,28 @@ jobs:
           python3 "$GITHUB_WORKSPACE/custom/patches/enable-usb-game-discovery.py"
           cd "$GITHUB_WORKSPACE"
           git clone --depth 1 --branch mesa-26.0.8 https://gitlab.freedesktop.org/mesa/mesa.git "$PSB/src/mesa"
-          # Mesa's generic qsort_s probe incorrectly enables HAVE_QSORT_S for the PS4
-          # cross target; the OpenOrbis libc does not declare that API. Disable only
-          # this feature probe so u_qsort.h selects its portable TLS fallback.
+          # Mesa's generic qsort_s probe incorrectly enables HAVE_QSORT_S for PS4.
+          # Search all Meson build files because Mesa moved this probe between versions.
           python3 - <<'PY'
           import os
+          import re
           from pathlib import Path
-          p = Path(os.environ["PSB"]) / "src/mesa/meson.build"
-          s = p.read_text()
-          old = "      'qsort_s': '',"
-          new = "      # PS4/OpenOrbis libc has no qsort_s declaration; use Mesa's fallback."
-          if old not in s:
-              raise SystemExit("Expected Mesa qsort_s feature probe not found; refusing an unsafe patch")
-          p.write_text(s.replace(old, new, 1))
+          root = Path(os.environ["PSB"]) / "src/mesa"
+          pattern = re.compile(r"""^([ \\t]*)(['"]qsort_s['"]\\s*:\\s*.*?,?)\\s*$""", re.MULTILINE)
+          changed = []
+          for p in root.rglob("meson.build"):
+              s = p.read_text(errors="replace")
+              updated, count = pattern.subn(
+                  r"\\1# PS4/OpenOrbis has no qsort_s; use Mesa fallback (disabled): \\2", s
+              )
+              if count:
+                  p.write_text(updated)
+                  changed.append((str(p), count))
+          if not changed:
+              # Print likely locations to make future failures diagnosable.
+              hits = [str(p) for p in root.rglob("meson.build") if "qsort_s" in p.read_text(errors="replace")]
+              raise SystemExit("qsort_s probe not found in Meson build files; candidate files: " + repr(hits))
+          print("Disabled Mesa qsort_s probe:", changed)
           PY
           git -C "$PSB/src/mesa" apply "$GITHUB_WORKSPACE/dolphinps4/patches/mesa-ps4.patch"
           git clone --depth 1 https://gitlab.freedesktop.org/mesa/drm.git "$PSB/src/libdrm"
