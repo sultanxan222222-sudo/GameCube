@@ -125,6 +125,35 @@ jobs:
           if old not in s:
               raise SystemExit("Expected Mesa linker flag not found; refusing an unsafe patch")
           p.write_text(s.replace(old, new, 1))
+
+          # The upstream modern toolchain includes PacBrew-only cmake/ps4.cmake,
+          # absent from the official OpenOrbis SDK. Use DolphinPS4's self-contained
+          # OpenOrbis toolchain and adapt love-style linker options for clang's driver.
+          modern = Path("dolphinps4/toolchain/ps4-love-modern.cmake")
+          base = Path("dolphinps4/toolchain/ps4-dolphin.cmake")
+          if not base.is_file() or "set(CMAKE_C_LINK_EXECUTABLE" not in base.read_text():
+              raise SystemExit("Self-contained ps4-dolphin.cmake is missing or unexpected")
+          modern.write_text(base.read_text())
+
+          style = Path("dolphinps4/toolchain/ps4-love-style.cmake")
+          st = style.read_text()
+          replacements = {
+              'string(APPEND CMAKE_EXE_LINKER_FLAGS " --script ${PS4_LINK_SCRIPT}")':
+              'string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,--script,${PS4_LINK_SCRIPT}")',
+              'string(APPEND CMAKE_EXE_LINKER_FLAGS " --wrap=${fn}")':
+              'string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,--wrap=${fn}")',
+              'string(APPEND CMAKE_EXE_LINKER_FLAGS " --wrap=pthread_once")':
+              'string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,--wrap=pthread_once")',
+              'string(APPEND CMAKE_EXE_LINKER_FLAGS " --wrap=mmap")':
+              'string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,--wrap=mmap")',
+              'string(APPEND CMAKE_EXE_LINKER_FLAGS " --wrap=clock_gettime")':
+              'string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,--wrap=clock_gettime")',
+          }
+          for old, new in replacements.items():
+              if old not in st:
+                  raise SystemExit("Expected linker option not found in ps4-love-style.cmake: " + old)
+              st = st.replace(old, new, 1)
+          style.write_text(st)
           PY
           # Assert the generated Mesa cross-file never references the missing PacBrew linker.
           grep -n -- "fuse-ld" dolphinps4/scripts/build-mesa.sh
