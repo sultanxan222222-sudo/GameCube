@@ -106,6 +106,25 @@ jobs:
           if old not in s:
               raise SystemExit("Expected ps4-env.sh source line not found; refusing an unsafe patch")
           p.write_text(s.replace(old, new, 1))
+
+          # The official OpenOrbis release does not ship PacBrew's host ld.lld.
+          # Guard the optional PacBrew-specific ldd check and use LLVM's installed
+          # linker by name (clang rejects an absolute path in -fuse-ld=).
+          p = Path("dolphinps4/scripts/ps4-env.sh")
+          s = p.read_text()
+          old = 'if ldd "$OPENORBIS/bin/ld.lld" | grep -q "libxml2.so.2 => not found"; then'
+          new = 'if [ -x "$OPENORBIS/bin/ld.lld" ] && ldd "$OPENORBIS/bin/ld.lld" | grep -q "libxml2.so.2 => not found"; then'
+          if old not in s:
+              raise SystemExit("Expected PacBrew linker compatibility check not found; refusing an unsafe patch")
+          p.write_text(s.replace(old, new, 1))
+
+          p = Path("dolphinps4/scripts/build-mesa.sh")
+          s = p.read_text()
+          old = "'-fuse-ld=$OPENORBIS/bin/ld.lld'"
+          new = "'-fuse-ld=lld'"
+          if old not in s:
+              raise SystemExit("Expected Mesa linker flag not found; refusing an unsafe patch")
+          p.write_text(s.replace(old, new, 1))
           PY
           git -C dolphinps4 rev-parse HEAD
           install -D custom/xmb/lang/ru.ini dolphinps4/xmb/lang/ru.ini
