@@ -170,7 +170,7 @@ jobs:
           set -euxo pipefail
           cd "$GITHUB_WORKSPACE/dolphinps4"
           python3 -m venv "$PSB/mesa-venv"
-          "$PSB/mesa-venv/bin/pip" install meson mako PyYAML
+          "$PSB/mesa-venv/bin/pip" install meson mako PyYAML packaging
           export PATH="$PSB/mesa-venv/bin:$PATH"
           bash scripts/build-mesa.sh setup
 
