@@ -157,8 +157,9 @@ jobs:
           # cross target; the OpenOrbis libc does not declare that API. Disable only
           # this feature probe so u_qsort.h selects its portable TLS fallback.
           python3 - <<'PY'
+          import os
           from pathlib import Path
-          p = Path("$PSB/src/mesa/meson.build")
+          p = Path(os.environ["PSB"]) / "src/mesa/meson.build"
           s = p.read_text()
           old = "      'qsort_s': '',"
           new = "      # PS4/OpenOrbis libc has no qsort_s declaration; use Mesa's fallback."
