@@ -31,7 +31,7 @@ jobs:
       - name: Install host build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y             build-essential git curl wget cmake ninja-build python3 python3-pip python3-venv             pkg-config meson python3-mako glslang-tools libxml2 libxml2-dev libgpgme-dev             libarchive-tools autoconf libtool nasm zlib1g-dev libffi-dev             pacman-package-manager makepkg
+          sudo apt-get install -y             build-essential git curl wget cmake ninja-build python3 python3-pip python3-venv             pkg-config meson python3-mako glslang-tools libxml2 libxml2-dev libgpgme-dev             libarchive-tools autoconf libtool nasm zlib1g-dev libffi-dev
           python3 -m pip install --break-system-packages Pillow PyYAML mako
 
       - name: Install official OpenOrbis PS4 toolchain
