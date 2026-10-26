@@ -233,7 +233,15 @@ jobs:
         run: |
           set -euxo pipefail
           cd "$GITHUB_WORKSPACE/dolphinps4"
-          bash scripts/configure-dolphin.sh
+          # Zstandard is optional for minizip-ng. This PS4 cross-build has no
+          # Zstd library/header in the OpenOrbis sysroot, so disable it explicitly
+          # rather than accidentally enabling host-only support.
+          bash scripts/configure-dolphin.sh -DMZ_ZSTD=OFF
+          # Verify the optional Zstd codec did not leak into the PS4 compile flags.
+          if grep -q -- '-DHAVE_ZSTD' "$PSB/build/dolphin/build.ninja"; then
+            echo "Zstandard remained enabled after -DMZ_ZSTD=OFF; refusing an invalid cross-build"
+            exit 1
+          fi
           # CMake's host-side probes can leak /usr/include into cross-compile commands.
           # Those glibc headers are incompatible with the PS4 FreeBSD target and break
           # minizip (bits/libc-header-start.h). Remove the host include from generated
