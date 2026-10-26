@@ -50,14 +50,14 @@ jobs:
           command -v pacbrew-pacman
           sudo find /opt/pacbrew /etc -type f \( -name 'pacman.conf' -o -iname '*mirrorlist*' \) -print 2>/dev/null | tee /tmp/pacbrew-config-files.txt
           while IFS= read -r cfg; do
-            sudo grep -q 'pacbrew.mydedibox.fr' "$cfg" 2>/dev/null || continue
+            sudo grep -q 'pacman.mydedibox.fr' "$cfg" 2>/dev/null || continue
             echo "Updating PacBrew mirror in $cfg"
-            sudo sed -i 's#http://pacbrew.mydedibox.fr#https://pacbrew.mydedibox.fr#g' "$cfg"
+            sudo sed -i 's#http://pacman.mydedibox.fr#https://pacman.mydedibox.fr#g' "$cfg"
           done < /tmp/pacbrew-config-files.txt
           echo 'Mirror settings after update:'
-          sudo grep -RIn 'pacbrew.mydedibox.fr\|XferCommand' /opt/pacbrew /etc/pacbrew /etc/pacman.conf 2>/dev/null || true
+          sudo grep -RIn 'pacman.mydedibox.fr\|XferCommand' /opt/pacbrew /etc/pacbrew /etc/pacman.conf 2>/dev/null || true
           echo 'Testing HTTPS mirror (legacy mirror has a self-signed certificate):'
-          curl -k -IL --max-time 20 https://pacbrew.mydedibox.fr/pacbrew/packages/ 2>&1
+          curl -k -IL --max-time 20 https://pacman.mydedibox.fr/pacbrew/packages/ 2>&1
           # PacBrew's legacy mirror has a self-signed TLS certificate. Configure
           # pacman to fetch through curl with certificate verification disabled.
           # This is scoped only to the temporary CI build runner.
@@ -70,7 +70,7 @@ jobs:
             sudo sed -i '/^\[options\]/a XferCommand = /usr/bin/curl -k -L -f -o %o %u' "$PACCONF"
           fi
           echo "Using PacBrew config: $PACCONF"
-          sudo grep -nE '^\[options\]|^XferCommand|pacbrew.mydedibox.fr' "$PACCONF" || true
+          sudo grep -nE '^\[options\]|^XferCommand|pacman.mydedibox.fr' "$PACCONF" || true
           sudo pacbrew-pacman -Sy --noconfirm
           sudo pacbrew-pacman --noconfirm -S ps4-openorbis ps4-openorbis-portlibs
           test -f /opt/pacbrew/ps4/openorbis/ps4vars.sh
