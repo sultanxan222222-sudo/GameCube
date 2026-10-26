@@ -88,6 +88,25 @@ jobs:
           find dolphinps4/toolchain dolphinps4/scripts -type f -name "*.sh" -exec chmod +x {} +
           # Restore execute bits on bundled PS4 compiler/linker wrappers as well.
           if [ -d dolphinps4/toolchain/bin ]; then find dolphinps4/toolchain/bin -type f -exec chmod +x {} +; fi
+          # The upstream scripts target PacBrew, whose ps4vars.sh is not included
+          # in the official OpenOrbis release used above. Make the environment
+          # bootstrap compatible with the official SDK without hiding real errors.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("dolphinps4/scripts/ps4-env.sh")
+          s = p.read_text()
+          old = 'source "$OPENORBIS/ps4vars.sh"'
+          new = '''if [ -f "$OPENORBIS/ps4vars.sh" ]; then
+              source "$OPENORBIS/ps4vars.sh"
+          else
+              export PS4SDK="$OPENORBIS"
+              export OO_PS4_TOOLCHAIN="$OPENORBIS"
+              export PATH="$OPENORBIS/bin:$PATH"
+          fi'''
+          if old not in s:
+              raise SystemExit("Expected ps4-env.sh source line not found; refusing an unsafe patch")
+          p.write_text(s.replace(old, new, 1))
+          PY
           git -C dolphinps4 rev-parse HEAD
           install -D custom/xmb/lang/ru.ini dolphinps4/xmb/lang/ru.ini
 
