@@ -3,7 +3,7 @@
 from pathlib import Path
 import re
 
-source = Path("Source/Core/DolphinNoGUI/PS4XMB.cpp")
+source = Path("Source/Core/DolphinNoGUI/PlatformPS4.cpp")
 text = source.read_text()
 
 if "std::vector<std::filesystem::directory_entry> entries;" in text and "for (const auto& entry : entries)" in text:
