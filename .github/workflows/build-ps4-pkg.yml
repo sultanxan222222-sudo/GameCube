@@ -225,16 +225,21 @@ jobs:
           candidates = sorted((p for p in source.rglob("zstd.h") if ".git" not in p.parts), key=lambda p: len(str(p)))
           if candidates:
               zstd_include = str(candidates[0].parent)
-              # Ninja build edges may use compiler wrappers or response-file commands.
-              # Inject the include on every compile edge, not by matching a specific compiler name.
+                  # Ninja stores compiler flags in variables, not necessarily on the edge line.
               lines = text.splitlines(keepends=True)
               changed = 0
               for i, line in enumerate(lines):
-                  if "-c " in line and ("clang" in line or "c++" in line) and zstd_include not in line:
-                      lines[i] = line.replace(" -c ", " -I" + zstd_include + " -c ", 1)
+                  stripped = line.lstrip()
+                  if stripped.startswith(("FLAGS =", "C_FLAGS =", "CXX_FLAGS =")) and zstd_include not in line:
+                      prefix = line[:len(line) - len(stripped)]
+                      key, value = stripped.split("=", 1)
+                      newline = "\\n" if line.endswith("\\n") else ""
+                      lines[i] = prefix + key + "= -I" + zstd_include + value.rstrip("\\n") + newline
                       changed += 1
               text = "".join(lines)
-              print("Found Zstandard header:", candidates[0], "compile commands updated:", changed)
+              print("Found Zstandard header:", candidates[0], "Ninja flag variables updated:", changed)
+              if changed == 0:
+                  raise SystemExit("Could not find Ninja FLAGS/C_FLAGS/CXX_FLAGS variables to inject Zstandard include")
           else:
               print("No zstd.h found in Dolphin source/submodules")
           build.write_text(text)
