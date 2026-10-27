@@ -244,6 +244,7 @@ jobs:
               raise SystemExit("Host /usr/include path remains in PS4 cross-compile commands")
           if candidates and zstd_include not in final_text:
               raise SystemExit("Zstandard include path was not injected into Ninja commands")
+          PY
           bash scripts/build-dolphin.sh
 
       - name: Package PKG and calculate checksum
