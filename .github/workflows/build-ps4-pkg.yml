@@ -140,19 +140,19 @@ jobs:
           # archive/compression support remains enabled.
           python3 - <<'PY'
           import os
-          import re
           from pathlib import Path
           p = Path(os.environ["PSB"]) / "src/dolphin/Externals/minizip-ng/CMakeLists.txt"
           s = p.read_text()
           marker = "set(MZ_BZIP2 OFF)"
           if marker not in s:
               raise SystemExit("Could not locate minizip-ng BZIP2 setting in " + str(p))
-          if not re.search(r"(?m)^\\s*set\\(MZ_ZSTD\\s+OFF\\)\\s*$", s):
-              s = s.replace(marker, marker + "\\nset(MZ_ZSTD OFF)", 1)
-          if not re.search(r"(?m)^\\s*set\\(MZ_ZSTD\\s+OFF\\)\\s*$", s):
+          if "set(MZ_ZSTD OFF)" not in s.splitlines():
+              s = s.replace(marker, marker + "\nset(MZ_ZSTD OFF)", 1)
+          if "set(MZ_ZSTD OFF)" not in s.splitlines():
               raise SystemExit("Failed to disable optional minizip-ng Zstandard support")
           p.write_text(s)
           print("Disabled optional minizip-ng Zstandard support for PS4 cross-build")
+          PY
           PY
           cd "$PSB/src/dolphin"
           python3 "$GITHUB_WORKSPACE/custom/patches/enable-usb-game-discovery.py"
