@@ -124,7 +124,7 @@ jobs:
                       break
               else:
                   raise SystemExit("Could not locate bundled curl configure option")
-              p.write_text("\\n".join(lines) + "\\n")
+              p.write_text("\n".join(lines) + "\n")
           PY
           grep -n -- "fuse-ld" dolphinps4/scripts/build-mesa.sh
           if grep -q -- "-fuse-ld=\\$OPENORBIS/bin/ld.lld" dolphinps4/scripts/build-mesa.sh; then
@@ -153,7 +153,7 @@ jobs:
           from pathlib import Path
           p = Path(__import__("os").environ["PSB"]) / "src/dolphin/Externals/curl/curl/CMakeLists.txt"
           s = p.read_text()
-          anchor = 'if(AMIGA)\\n  set(HAVE_GETADDRINFO 0)  # Breaks the build when detected and used.\\nendif()'
+          anchor = 'if(AMIGA)\n  set(HAVE_GETADDRINFO 0)  # Breaks the build when detected and used.\nendif()'
           block = '''if(PS4)
             # OpenOrbis/PS4 lacks these FreeBSD/Linux optional interfaces.
             set(HAVE_ACCEPT4 0)
