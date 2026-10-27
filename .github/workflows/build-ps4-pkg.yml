@@ -231,8 +231,8 @@ jobs:
               lines = text.splitlines(keepends=True)
               changed = 0
               for i, line in enumerate(lines):
-                  if re.search(r"(^|\s)(?:[^\s]*/)?(?:clang\+\+|clang\+\+-21|c\+\+)(?:\s|$)", line) and "-c " in line and zstd_include not in line:
-                      lines[i] = re.sub(r"(^|\s)((?:[^\s]*/)?(?:clang\+\+|clang\+\+-21|c\+\+))(\s)", r"\1\2 -I" + zstd_include + r"\3", line, count=1)
+                  if re.search(r"(^|\s)(?:[^\s]*/)?(?:clang\+\+-21|clang\+\+|c\+\+)(?:\s|$)", line) and "-c " in line and zstd_include not in line:
+                      lines[i] = re.sub(r"(^|\s)((?:[^\s]*/)?(?:clang\+\+-21|clang\+\+|c\+\+))(\s)", r"\1\2 -I" + zstd_include + r"\3", line, count=1)
                       changed += 1
               text = "".join(lines)
               print("Found Zstandard header:", candidates[0], "compiler commands updated:", changed)
