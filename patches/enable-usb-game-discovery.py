@@ -6,6 +6,25 @@ import re
 source = Path("Source/Core/DolphinNoGUI/PlatformPS4.cpp")
 text = source.read_text()
 
+# The injected scan uses these standard-library facilities. Add only missing
+# headers so the patch is independent of incidental upstream include changes.
+required_headers = {
+    "#include <algorithm>": "algorithm",
+    "#include <filesystem>": "filesystem",
+    "#include <set>": "set",
+    "#include <string>": "string",
+    "#include <system_error>": "system_error",
+    "#include <vector>": "vector",
+}
+missing_headers = [header for header in required_headers if header not in text]
+if missing_headers:
+    include_lines = list(re.finditer(r"(?m)^#include [^\\n]+$", text))
+    if include_lines:
+        pos = include_lines[-1].end()
+        text = text[:pos] + "\\n" + "\\n".join(missing_headers) + text[pos:]
+    else:
+        raise SystemExit("Could not find include section in PlatformPS4.cpp")
+
 if "std::vector<std::filesystem::directory_entry> entries;" in text and "for (const auto& entry : entries)" in text:
     print("USB game discovery patch already applied.")
     raise SystemExit(0)
