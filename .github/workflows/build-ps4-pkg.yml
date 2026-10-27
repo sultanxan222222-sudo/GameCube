@@ -221,21 +221,20 @@ jobs:
           # Locate zstd.h in the checked-out submodule and inject its include
           # directory into actual Ninja compiler commands, regardless of whether
           # CMake emitted clang++-21, an absolute compiler path, or a wrapper.
-          import re
           source = Path.home() / "dolphinps4-build/src/dolphin"
           candidates = sorted((p for p in source.rglob("zstd.h") if ".git" not in p.parts), key=lambda p: len(str(p)))
           if candidates:
               zstd_include = str(candidates[0].parent)
-              # Ninja command lines are one build edge per line. Only alter lines
-              # invoking a C/C++ compiler; avoid touching link commands.
+              # Ninja build edges may use compiler wrappers or response-file commands.
+              # Inject the include on every compile edge, not by matching a specific compiler name.
               lines = text.splitlines(keepends=True)
               changed = 0
               for i, line in enumerate(lines):
-                  if re.search(r"(^|\s)(?:[^\s]*/)?(?:clang\+\+-21|clang\+\+|c\+\+)(?:\s|$)", line) and "-c " in line and zstd_include not in line:
-                      lines[i] = re.sub(r"(^|\s)((?:[^\s]*/)?(?:clang\+\+-21|clang\+\+|c\+\+))(\s)", r"\1\2 -I" + zstd_include + r"\3", line, count=1)
+                  if "-c " in line and ("clang" in line or "c++" in line) and zstd_include not in line:
+                      lines[i] = line.replace(" -c ", " -I" + zstd_include + " -c ", 1)
                       changed += 1
               text = "".join(lines)
-              print("Found Zstandard header:", candidates[0], "compiler commands updated:", changed)
+              print("Found Zstandard header:", candidates[0], "compile commands updated:", changed)
           else:
               print("No zstd.h found in Dolphin source/submodules")
           build.write_text(text)
