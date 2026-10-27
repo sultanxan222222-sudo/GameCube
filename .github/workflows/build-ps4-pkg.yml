@@ -112,6 +112,19 @@ jobs:
           if not base.is_file() or "set(CMAKE_C_LINK_EXECUTABLE" not in base.read_text():
               raise SystemExit("Self-contained ps4-dolphin.cmake is missing or unexpected")
           modern.write_text(base.read_text())
+          # Curl's cross-compile header probes fail against the OpenOrbis sysroot.
+          # Use its maintained Unix feature cache; PS4-specific unavailable calls
+          # are disabled after that cache is loaded in Curl's CMakeLists.txt.
+          p = Path("dolphinps4/scripts/configure-dolphin.sh")
+          lines = p.read_text().splitlines()
+          if not any("-D_CURL_PREFILL=ON" in line for line in lines):
+              for i, line in enumerate(lines):
+                  if "-DUSE_SYSTEM_CURL=OFF" in line:
+                      lines.insert(i + 1, "    -D_CURL_PREFILL=ON \\\\")
+                      break
+              else:
+                  raise SystemExit("Could not locate bundled curl configure option")
+              p.write_text("\\n".join(lines) + "\\n")
           PY
           grep -n -- "fuse-ld" dolphinps4/scripts/build-mesa.sh
           if grep -q -- "-fuse-ld=\\$OPENORBIS/bin/ld.lld" dolphinps4/scripts/build-mesa.sh; then
@@ -134,6 +147,41 @@ jobs:
           git -C "$PSB/src/dolphin" checkout 771fb154059c5812d6a715a23226249cc42877a2
           git -C "$PSB/src/dolphin" submodule update --init --recursive
           git -C "$PSB/src/dolphin" apply "$GITHUB_WORKSPACE/dolphinps4/patches/dolphin-ps4.patch"
+          # Curl's generic Unix cache predicts several APIs that the PS4 kernel lacks.
+          # Apply the overrides after curl loads the cache, before feature tests/config.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path(__import__("os").environ["PSB"]) / "src/dolphin/Externals/curl/curl/CMakeLists.txt"
+          s = p.read_text()
+          anchor = 'if(AMIGA)\\n  set(HAVE_GETADDRINFO 0)  # Breaks the build when detected and used.\\nendif()'
+          block = '''if(PS4)
+            # OpenOrbis/PS4 lacks these FreeBSD/Linux optional interfaces.
+            set(HAVE_ACCEPT4 0)
+            set(HAVE_EVENTFD 0)
+            set(HAVE_SYS_EVENTFD_H 0)
+            set(HAVE_SYS_FILIO_H 0)
+            set(HAVE_SYS_PARAM_H 0)
+            set(HAVE_SYS_POLL_H 0)
+            set(HAVE_SYS_RESOURCE_H 0)
+            set(HAVE_SYS_SELECT_H 0)
+            set(HAVE_SYS_SOCKIO_H 0)
+            set(HAVE_SYS_UN_H 0)
+            set(HAVE_IFADDRS_H 0)
+            set(HAVE_NET_IF_H 0)
+            set(HAVE_GETIFADDRS 0)
+            set(HAVE_GETRLIMIT 0)
+            set(HAVE_SETRLIMIT 0)
+            set(HAVE_PIPE2 0)
+          endif()
+
+          '''
+          if anchor not in s:
+              raise SystemExit("Could not locate Curl feature-cache insertion point")
+          if "OpenOrbis/PS4 lacks these FreeBSD/Linux optional interfaces." not in s:
+              s = s.replace(anchor, block + anchor, 1)
+          p.write_text(s)
+          print("Applied PS4-specific Curl feature overrides")
+          PY
           # The pinned Dolphin revision configures minizip-ng with ZSTD enabled,
           # but its bundled Zstandard include target is not propagated to the PS4
           # cross-compile. Disable only optional ZIP Zstandard support; other
