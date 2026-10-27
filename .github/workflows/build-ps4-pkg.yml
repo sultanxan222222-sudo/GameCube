@@ -225,7 +225,7 @@ jobs:
           candidates = sorted((p for p in source.rglob("zstd.h") if ".git" not in p.parts), key=lambda p: len(str(p)))
           if candidates:
               zstd_include = str(candidates[0].parent)
-                  # Ninja stores compiler flags in variables, not necessarily on the edge line.
+              # Ninja stores compiler flags in variables, not necessarily on the edge line.
               lines = text.splitlines(keepends=True)
               changed = 0
               for i, line in enumerate(lines):
@@ -233,8 +233,8 @@ jobs:
                   if stripped.startswith(("FLAGS =", "C_FLAGS =", "CXX_FLAGS =")) and zstd_include not in line:
                       prefix = line[:len(line) - len(stripped)]
                       key, value = stripped.split("=", 1)
-                      newline = "\\n" if line.endswith("\\n") else ""
-                      lines[i] = prefix + key + "= -I" + zstd_include + value.rstrip("\\n") + newline
+                      newline = "\n" if line.endswith("\n") else ""
+                      lines[i] = prefix + key + "= -I" + zstd_include + value.rstrip("\n") + newline
                       changed += 1
               text = "".join(lines)
               print("Found Zstandard header:", candidates[0], "Ninja flag variables updated:", changed)
