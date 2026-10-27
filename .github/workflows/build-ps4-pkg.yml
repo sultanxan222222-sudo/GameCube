@@ -172,6 +172,19 @@ jobs:
             set(HAVE_GETRLIMIT 0)
             set(HAVE_SETRLIMIT 0)
             set(HAVE_PIPE2 0)
+            # The OpenOrbis target is x86_64: these ABI sizes are fixed for PS4.
+            set(HAVE_SIZEOF_OFF_T 1)
+            set(SIZEOF_OFF_T 8)
+            set(HAVE_SIZEOF_CURL_OFF_T 1)
+            set(SIZEOF_CURL_OFF_T 8)
+            set(HAVE_SIZEOF_CURL_SOCKET_T 1)
+            set(SIZEOF_CURL_SOCKET_T 4)
+            set(HAVE_SIZEOF_SIZE_T 1)
+            set(SIZEOF_SIZE_T 8)
+            set(HAVE_SIZEOF_SSIZE_T 1)
+            set(SIZEOF_SSIZE_T 8)
+            set(HAVE_SIZEOF_TIME_T 1)
+            set(SIZEOF_TIME_T 8)
           endif()
 
           '''
