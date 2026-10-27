@@ -196,54 +196,12 @@ jobs:
         run: |
           set -euxo pipefail
           cd "$GITHUB_WORKSPACE/dolphinps4"
-          bash scripts/configure-dolphin.sh -DMZ_ZSTD=OFF
-          if grep -q -- '-DHAVE_ZSTD' "$PSB/build/dolphin/build.ninja"; then
-            echo "Zstandard remained enabled after -DMZ_ZSTD=OFF; refusing an invalid cross-build"
-            exit 1
-          fi
-          python3 - <<'PY'
-          from pathlib import Path
-          build = Path.home() / "dolphinps4-build/build/dolphin/build.ninja"
-          if not build.is_file():
-              raise SystemExit("Dolphin build.ninja missing after configuration")
-          text = build.read_text()
-          # Host include paths are a cross-compile hazard. In particular,
-          # -isystem /usr/include makes PS4 compilation consume host glibc
-          # headers instead of target sysroot headers.
-          for flag in (" -I/usr/include", " -isystem /usr/include"):
-              text = text.replace(flag, "")
-          # Locate zstd.h in the checked-out submodule and inject its include
-          # directory into actual Ninja compiler commands, regardless of whether
-          # CMake emitted clang++-21, an absolute compiler path, or a wrapper.
-          source = Path.home() / "dolphinps4-build/src/dolphin"
-          candidates = sorted((p for p in source.rglob("zstd.h") if ".git" not in p.parts), key=lambda p: len(str(p)))
-          if candidates:
-              zstd_include = str(candidates[0].parent)
-              # Ninja stores compiler flags in variables, not necessarily on the edge line.
-              lines = text.splitlines(keepends=True)
-              changed = 0
-              for i, line in enumerate(lines):
-                  stripped = line.lstrip()
-                  if stripped.startswith(("FLAGS =", "C_FLAGS =", "CXX_FLAGS =")) and zstd_include not in line:
-                      prefix = line[:len(line) - len(stripped)]
-                      key, value = stripped.split("=", 1)
-                      newline = "\n" if line.endswith("\n") else ""
-                      lines[i] = prefix + key + "= -I" + zstd_include + value.rstrip("\n") + newline
-                      changed += 1
-              text = "".join(lines)
-              print("Found Zstandard header:", candidates[0], "Ninja flag variables updated:", changed)
-              if changed == 0:
-                  raise SystemExit("Could not find Ninja FLAGS/C_FLAGS/CXX_FLAGS variables to inject Zstandard include")
-          else:
-              print("No zstd.h found in Dolphin source/submodules")
-          build.write_text(text)
-          final_text = build.read_text()
-          if "-I/usr/include" in final_text or "-isystem /usr/include" in final_text:
-              raise SystemExit("Host /usr/include path remains in PS4 cross-compile commands")
-          if candidates and zstd_include not in final_text:
-              raise SystemExit("Zstandard include path was not injected into Ninja commands")
-          PY
+          # Follow the upstream DolphinPS4 build instructions. Do not rewrite
+          # generated Ninja internals: that workaround caused repeated failures.
+          bash scripts/configure-dolphin.sh
+          test -s "$PSB/build/dolphin/build.ninja"
           bash scripts/build-dolphin.sh
+
 
       - name: Package PKG and calculate checksum
         shell: bash
