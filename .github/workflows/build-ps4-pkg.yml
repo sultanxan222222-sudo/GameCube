@@ -210,19 +210,19 @@ jobs:
           # generated Ninja internals: that workaround caused repeated failures.
           bash scripts/configure-dolphin.sh
           test -s "$PSB/build/dolphin/build.ninja"
-          # The upstream CMake configuration currently leaks the host include path
-          # into two minizip-ng compile commands. That makes Clang include Linux
-          # glibc headers while targeting FreeBSD/PS4. Remove only this exact host
-          # include token from generated Ninja commands and fail if the leak changes.
+          # Remove the host include only when CMake actually leaks it. Newer
+          # configure results may already be clean, which must not fail the build.
           python3 - <<'PY'
           from pathlib import Path
-          p = Path(__import__("os").environ["PSB"]) / "build/dolphin/build.ninja"
+          import os
+          p = Path(os.environ["PSB"]) / "build/dolphin/build.ninja"
           s = p.read_text()
           count = s.count(" -I/usr/include")
-          if count < 1:
-              raise SystemExit("Expected leaked host include -I/usr/include was not found; review configure output")
-          p.write_text(s.replace(" -I/usr/include", ""))
-          print(f"Removed {count} host /usr/include flags from PS4 Ninja build")
+          if count:
+              p.write_text(s.replace(" -I/usr/include", ""))
+              print(f"Removed {count} host /usr/include flags from PS4 Ninja build")
+          else:
+              print("No host /usr/include leakage detected; leaving Ninja file unchanged")
           PY
           bash scripts/build-dolphin.sh
 
