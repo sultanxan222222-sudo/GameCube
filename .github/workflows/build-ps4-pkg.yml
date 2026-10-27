@@ -1,15 +1,9 @@
 name: Build DolphinPS4 PKG
 
 on:
+  # Build is intentionally manual while the pipeline is being audited.
+  # Do not spend runner time on every intermediate repair commit.
   workflow_dispatch:
-  push:
-    branches:
-      - work/dolphinps4-integration
-    paths:
-      - 'xmb/**'
-      - '.github/workflows/build-ps4-pkg.yml'
-      - 'BUILD_STATUS.md'
-      - 'patches/**'
 
 permissions:
   contents: read
