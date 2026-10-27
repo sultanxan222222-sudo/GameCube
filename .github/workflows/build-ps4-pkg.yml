@@ -218,22 +218,32 @@ jobs:
           # headers instead of target sysroot headers.
           for flag in (" -I/usr/include", " -isystem /usr/include"):
               text = text.replace(flag, "")
-          # Locate zstd.h by actual submodule layout instead of assuming lib/zstd.h.
-          candidates = sorted((p for p in (Path.home() / "dolphinps4-build/src/dolphin").rglob("zstd.h") if ".git" not in p.parts), key=lambda p: len(str(p)))
+          # Locate zstd.h in the checked-out submodule and inject its include
+          # directory into actual Ninja compiler commands, regardless of whether
+          # CMake emitted clang++-21, an absolute compiler path, or a wrapper.
+          import re
+          source = Path.home() / "dolphinps4-build/src/dolphin"
+          candidates = sorted((p for p in source.rglob("zstd.h") if ".git" not in p.parts), key=lambda p: len(str(p)))
           if candidates:
               zstd_include = str(candidates[0].parent)
-              text = text.replace("clang++-21 ", "clang++-21 -I" + zstd_include + " ")
-              print("Found Zstandard header:", candidates[0])
+              # Ninja command lines are one build edge per line. Only alter lines
+              # invoking a C/C++ compiler; avoid touching link commands.
+              lines = text.splitlines(keepends=True)
+              changed = 0
+              for i, line in enumerate(lines):
+                  if re.search(r"(^|\\s)(?:[^\\s]*/)?(?:clang\\+\\+|clang\\+\\+-21|c\\+\\+)(?:\\s|$)", line) and "-c " in line and zstd_include not in line:
+                      lines[i] = re.sub(r"(^|\\s)((?:[^\\s]*/)?(?:clang\\+\\+|clang\\+\\+-21|c\\+\\+))(\\s)", r"\\1\\2 -I" + zstd_include + r"\\3", line, count=1)
+                      changed += 1
+              text = "".join(lines)
+              print("Found Zstandard header:", candidates[0], "compiler commands updated:", changed)
           else:
-              print("No zstd.h found in Dolphin source/submodules; continue to let compiler report whether it is required")
+              print("No zstd.h found in Dolphin source/submodules")
           build.write_text(text)
           final_text = build.read_text()
           if "-I/usr/include" in final_text or "-isystem /usr/include" in final_text:
               raise SystemExit("Host /usr/include path remains in PS4 cross-compile commands")
-          if zstd_include not in final_text:
-              raise SystemExit("Bundled Zstandard include path was not added to PS4 build commands")
-          print("Removed host headers and added bundled Zstandard headers: " + zstd_include)
-          PY
+          if candidates and zstd_include not in final_text:
+              raise SystemExit("Zstandard include path was not injected into Ninja commands")
           bash scripts/build-dolphin.sh
 
       - name: Package PKG and calculate checksum
