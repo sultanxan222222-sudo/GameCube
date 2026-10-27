@@ -153,7 +153,6 @@ jobs:
           p.write_text(s)
           print("Disabled optional minizip-ng Zstandard support for PS4 cross-build")
           PY
-          PY
           cd "$PSB/src/dolphin"
           python3 "$GITHUB_WORKSPACE/custom/patches/enable-usb-game-discovery.py"
           cd "$GITHUB_WORKSPACE"
