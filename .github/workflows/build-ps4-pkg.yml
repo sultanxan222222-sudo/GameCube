@@ -172,6 +172,8 @@ jobs:
             set(HAVE_GETRLIMIT 0)
             set(HAVE_SETRLIMIT 0)
             set(HAVE_PIPE2 0)
+            # Do not let curl enable Unix-domain socket code (PS4 supports TCP/IP only here).
+            set(ENABLE_UNIX_SOCKETS OFF CACHE BOOL "Disable Unix domain sockets on PS4" FORCE)
             # The OpenOrbis target is x86_64: these ABI sizes are fixed for PS4.
             set(HAVE_SIZEOF_OFF_T 1)
             set(SIZEOF_OFF_T 8)
