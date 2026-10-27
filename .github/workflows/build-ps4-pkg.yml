@@ -120,7 +120,7 @@ jobs:
           if not any("-D_CURL_PREFILL=ON" in line for line in lines):
               for i, line in enumerate(lines):
                   if "-DUSE_SYSTEM_CURL=OFF" in line:
-                      lines.insert(i + 1, "    -D_CURL_PREFILL=ON \\\\")
+                      lines.insert(i + 1, "    -D_CURL_PREFILL=ON \\")
                       break
               else:
                   raise SystemExit("Could not locate bundled curl configure option")
