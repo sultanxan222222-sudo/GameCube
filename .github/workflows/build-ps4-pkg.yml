@@ -134,6 +134,23 @@ jobs:
           git -C "$PSB/src/dolphin" checkout 771fb154059c5812d6a715a23226249cc42877a2
           git -C "$PSB/src/dolphin" submodule update --init --recursive
           git -C "$PSB/src/dolphin" apply "$GITHUB_WORKSPACE/dolphinps4/patches/dolphin-ps4.patch"
+          # The pinned Dolphin revision configures minizip-ng with ZSTD enabled,
+          # but its bundled Zstandard include target is not propagated to the PS4
+          # cross-compile. Disable only optional ZIP Zstandard support; other
+          # archive/compression support remains enabled.
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          p = Path(os.environ["PSB"]) / "src/dolphin/Externals/minizip-ng/CMakeLists.txt"
+          s = p.read_text()
+          marker = "set(MZ_BZIP2 OFF)\\n"
+          if marker not in s:
+              raise SystemExit("Could not locate minizip-ng feature settings")
+          if "set(MZ_ZSTD OFF)" not in s:
+              s = s.replace(marker, marker + "set(MZ_ZSTD OFF)\\n", 1)
+          p.write_text(s)
+          print("Disabled optional minizip-ng Zstandard support for PS4 cross-build")
+          PY
           cd "$PSB/src/dolphin"
           python3 "$GITHUB_WORKSPACE/custom/patches/enable-usb-game-discovery.py"
           cd "$GITHUB_WORKSPACE"
