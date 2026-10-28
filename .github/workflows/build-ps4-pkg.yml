@@ -338,7 +338,7 @@ jobs:
           # Clang's driver also rejects GNU ld's bare whole-archive switches.
           # Forward them explicitly to the linker while preserving their order.
           for flag in ("whole-archive", "no-whole-archive"):
-              s, routed = re.subn(r"(?<!-Wl,)--" + flag + r"\\b", "-Wl,--" + flag, s)
+              s, routed = re.subn(r"(?<!-Wl,)--" + flag + r"\b", "-Wl,--" + flag, s)
               if routed:
                   print(f"Routed {routed} --{flag} options through lld")
           p.write_text(s)
