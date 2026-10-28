@@ -365,6 +365,23 @@ jobs:
           else:
               print("Bundled LZ4 include path already present")
           PY
+          # Build the bundled LZ4 static library for the PS4 target. The generated
+          # Dolphin link command references -llz4, but its search paths omit the
+          # bundled library and accidentally resolve only host paths.
+          LZ4_DIR="$PSB/src/dolphin/Externals/lz4/lz4/lib"
+          test -s "$LZ4_DIR/lz4.c"
+          mkdir -p "$PSB/sysroot/lib" "$PSB/lz4-objects"
+          rm -f "$PSB/lz4-objects"/*.o "$PSB/sysroot/lib/liblz4.a"
+          for src in "$LZ4_DIR"/*.c; do
+            [ -f "$src" ] || continue
+            obj="$PSB/lz4-objects/$(basename "${src%.c}").o"
+            clang-21 --target=x86_64-pc-freebsd12-elf --sysroot="$OPENORBIS" \\
+              -D_GNU_SOURCE -D__PS4__ -D__ORBIS__ -D__OPENORBIS__ -O2 -fPIC \\
+              -I"$LZ4_DIR" -I"$OPENORBIS/include" -c "$src" -o "$obj"
+          done
+          test -n "$(find "$PSB/lz4-objects" -maxdepth 1 -name '*.o' -print -quit)"
+          llvm-ar-21 rcs "$PSB/sysroot/lib/liblz4.a" "$PSB"/lz4-objects/*.o
+          test -s "$PSB/sysroot/lib/liblz4.a"
           # Build only the installable no-GUI app target. The upstream default
           # also builds traversal_server, a host-side utility that is not shipped
           # in the PS4 PKG and fails to link against the PS4 malloc/runtime hooks.
