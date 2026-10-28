@@ -339,7 +339,7 @@ jobs:
           # Build only the installable no-GUI app target. The upstream default
           # also builds traversal_server, a host-side utility that is not shipped
           # in the PS4 PKG and fails to link against the PS4 malloc/runtime hooks.
-          bash scripts/build-dolphin.sh dolphin-emu-nogui_eboot
+          bash scripts/build-dolphin.sh dolphin-nogui_eboot
 
 
       - name: Package PKG and calculate checksum
