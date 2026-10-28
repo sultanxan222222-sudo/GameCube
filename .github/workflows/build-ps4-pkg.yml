@@ -336,6 +336,28 @@ jobs:
           else:
               print("No bare --wrap linker options found in generated Ninja commands")
           PY
+          # The pinned Dolphin revision's LZ4 submodule is present, but its
+          # public header directory is not propagated into this cross-build's
+          # generated Core compile commands. Add that bundled include directory
+          # to the generated Ninja file rather than depending on host LZ4 headers.
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          p = Path(os.environ["PSB"]) / "build/dolphin/build.ninja"
+          s = p.read_text()
+          core_include = f"-I{os.environ['PSB']}/src/dolphin/Source/Core"
+          lz4_include = f"-I{os.environ['PSB']}/src/dolphin/Externals/lz4/lz4/lib"
+          if not (Path(os.environ["PSB"]) / "src/dolphin/Externals/lz4/lz4/lib/lz4.h").is_file():
+              raise SystemExit("Bundled Dolphin LZ4 header is missing; submodule checkout is incomplete")
+          if lz4_include not in s:
+              if core_include not in s:
+                  raise SystemExit("Could not locate Dolphin Core include anchor in generated Ninja file")
+              s = s.replace(core_include, lz4_include + " " + core_include)
+              p.write_text(s)
+              print("Added bundled LZ4 include path to Dolphin cross-build")
+          else:
+              print("Bundled LZ4 include path already present")
+          PY
           # Build only the installable no-GUI app target. The upstream default
           # also builds traversal_server, a host-side utility that is not shipped
           # in the PS4 PKG and fails to link against the PS4 malloc/runtime hooks.
