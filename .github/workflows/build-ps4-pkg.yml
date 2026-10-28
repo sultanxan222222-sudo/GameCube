@@ -326,6 +326,15 @@ jobs:
               print(f"Removed {total} host /usr/include flags from PS4 Ninja build")
           else:
               print("No host /usr/include leakage detected; leaving Ninja file unchanged")
+          # Clang's driver rejects GNU ld's bare --wrap options. Route these
+          # options through the linker, without touching already-correct -Wl forms.
+          import re
+          fixed, count = re.subn(r"(?<!-Wl,)--wrap=", "-Wl,--wrap=", s)
+          if count:
+              p.write_text(fixed)
+              print(f"Routed {count} allocator/runtime --wrap options through lld")
+          else:
+              print("No bare --wrap linker options found in generated Ninja commands")
           PY
           bash scripts/build-dolphin.sh
 
