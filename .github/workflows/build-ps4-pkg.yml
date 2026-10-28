@@ -169,6 +169,8 @@ jobs:
             set(HAVE_SYS_UN_H 0)
             set(HAVE_IFADDRS_H 0)
             set(HAVE_NET_IF_H 0)
+            # OpenOrbis lacks if_nametoindex; keep curl's IPv6 zone parsing on numeric IDs.
+            set(HAVE_IF_NAMETOINDEX 0)
             # OpenOrbis does not declare if_nametoindex in this target sysroot.
             set(HAVE_IF_NAMETOINDEX 0)
             # Without net/if.h, prevent curl from compiling the ioctl/ifreq path in if2ip.c.
