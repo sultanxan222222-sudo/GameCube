@@ -24,6 +24,7 @@ ps4_insert = (
     "  # Scope UNIX to curl and use curl's maintained Unix feature cache.\n"
     "  set(UNIX TRUE)\n"
     '  set(_CURL_PREFILL ON CACHE BOOL "Use Unix feature defaults for PS4 curl" FORCE)\n'
+    '  set(ENABLE_UNIX_SOCKETS OFF CACHE BOOL "Disable Unix-domain sockets on PS4" FORCE)\n'
     "  # OpenOrbis netinet/in.h"
 )
 if "Use Unix feature defaults for PS4 curl" not in p_text:
@@ -33,6 +34,24 @@ if "Use Unix feature defaults for PS4 curl" not in p_text:
     parent.write_text(p_text)
 
 c_text = curl_cmake.read_text()
+# unix-cache.cmake sets USE_UNIX_SOCKETS=1 for normal POSIX hosts; PS4's OpenOrbis
+# sysroot does not provide a complete sockaddr_un ABI. Override that default before
+# curl evaluates its ENABLE_UNIX_SOCKETS option and before feature summary generation.
+unix_anchor = (
+    '    include("\${CMAKE_CURRENT_SOURCE_DIR}/CMake/unix-cache.cmake")\\n'
+    '    message(STATUS "Pre-filling feature detection results for UNIX")'
+)
+unix_insert = (
+    '    include("\${CMAKE_CURRENT_SOURCE_DIR}/CMake/unix-cache.cmake")\\n'
+    '    if(PS4)\\n'
+    '      set(USE_UNIX_SOCKETS OFF)\\n'
+    '    endif()\\n'
+    '    message(STATUS "Pre-filling feature detection results for UNIX")'
+)
+if '      set(USE_UNIX_SOCKETS OFF)' not in c_text:
+    if unix_anchor not in c_text:
+        raise SystemExit("Could not locate curl Unix feature-cache include")
+    c_text = c_text.replace(unix_anchor, unix_insert, 1)
 size_anchor = (
     'check_type_size("curl_socket_t" SIZEOF_CURL_SOCKET_T)\n'
     'cmake_pop_check_state()  # pop curl system headers\n'
