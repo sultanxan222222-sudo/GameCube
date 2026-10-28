@@ -331,10 +331,17 @@ jobs:
           import re
           fixed, count = re.subn(r"(?<!-Wl,)--wrap=", "-Wl,--wrap=", s)
           if count:
-              p.write_text(fixed)
+              s = fixed
               print(f"Routed {count} allocator/runtime --wrap options through lld")
           else:
               print("No bare --wrap linker options found in generated Ninja commands")
+          # Clang's driver also rejects GNU ld's bare whole-archive switches.
+          # Forward them explicitly to the linker while preserving their order.
+          for flag in ("whole-archive", "no-whole-archive"):
+              s, routed = re.subn(r"(?<!-Wl,)--" + flag + r"\\b", "-Wl,--" + flag, s)
+              if routed:
+                  print(f"Routed {routed} --{flag} options through lld")
+          p.write_text(s)
           PY
           # The pinned Dolphin revision's LZ4 submodule is present, but its
           # public header directory is not propagated into this cross-build's
