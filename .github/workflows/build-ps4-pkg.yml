@@ -147,6 +147,7 @@ jobs:
           git -C "$PSB/src/dolphin" checkout 771fb154059c5812d6a715a23226249cc42877a2
           git -C "$PSB/src/dolphin" submodule update --init --recursive
           git -C "$PSB/src/dolphin" apply "$GITHUB_WORKSPACE/dolphinps4/patches/dolphin-ps4.patch"
+          python3 "$GITHUB_WORKSPACE/custom/patches/fix-curl-ps4-cmake.py" "$PSB/src/dolphin"
           # Curl's generic Unix cache predicts several APIs that the PS4 kernel lacks.
           # Apply the overrides after curl loads the cache, before feature tests/config.
           python3 - <<'PY'
