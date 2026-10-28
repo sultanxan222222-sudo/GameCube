@@ -287,10 +287,23 @@ jobs:
           import os
           p = Path(os.environ["PSB"]) / "build/dolphin/build.ninja"
           s = p.read_text()
-          count = s.count(" -I/usr/include")
-          if count:
-              p.write_text(s.replace(" -I/usr/include", ""))
-              print(f"Removed {count} host /usr/include flags from PS4 Ninja build")
+          # Both spellings have appeared in generated Ninja commands. Removing only
+          # -I/usr/include missed the actual -isystem /usr/include leak, which made
+          # the PS4 cross-compiler include the Ubuntu host stdint.h and fail on
+          # bits/libc-header-start.h. Strip both forms from generated commands.
+          replacements = (
+              (" -I/usr/include", ""),
+              (" -isystem /usr/include", ""),
+          )
+          total = 0
+          for flag, replacement in replacements:
+              count = s.count(flag)
+              if count:
+                  s = s.replace(flag, replacement)
+                  total += count
+          if total:
+              p.write_text(s)
+              print(f"Removed {total} host /usr/include flags from PS4 Ninja build")
           else:
               print("No host /usr/include leakage detected; leaving Ninja file unchanged")
           PY
