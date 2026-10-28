@@ -126,20 +126,25 @@ jobs:
                   raise SystemExit("Could not locate bundled curl configure option")
               p.write_text("\n".join(lines) + "\n")
           PY
-          # Ensure the PS4 build does not use host Zstandard headers/libraries.
+          # Keep optional compression libraries bundled for the PS4 cross-build.
+          # Use chr(92) for CMake's continuation slash to avoid Python quoting errors.
           python3 - <<'PY'
           from pathlib import Path
           p = Path("dolphinps4/scripts/configure-dolphin.sh")
           lines = p.read_text().splitlines()
-          if not any("-DUSE_SYSTEM_ZSTD=OFF" in line for line in lines):
-              for i, line in enumerate(lines):
-                  if "-DUSE_SYSTEM_CURL=OFF" in line:
-                      lines.insert(i, "    -DUSE_SYSTEM_ZSTD=OFF \\\")
-                      break
-              else:
-                  raise SystemExit("Could not locate USE_SYSTEM_CURL option for Zstandard override")
-              p.write_text("\\n".join(lines) + "\\n")
-          print("Configured bundled Zstandard for the PS4 cross-build")
+          changed = False
+          for option in ("-DUSE_SYSTEM_CURL=OFF", "-DUSE_SYSTEM_ZSTD=OFF"):
+              if not any(option in line for line in lines):
+                  for i, line in enumerate(lines):
+                      if "-DUSE_SYSTEM_CURL=OFF" in line:
+                          lines.insert(i + 1, "    " + option + " " + chr(92))
+                          changed = True
+                          break
+                  else:
+                      raise SystemExit("Could not locate configure option insertion point: " + option)
+          if changed:
+              p.write_text("\n".join(lines) + "\n")
+          print("Configured bundled Curl/Zstandard for the PS4 cross-build")
           PY
           grep -n -- "fuse-ld" dolphinps4/scripts/build-mesa.sh
           if grep -q -- "-fuse-ld=\\$OPENORBIS/bin/ld.lld" dolphinps4/scripts/build-mesa.sh; then
