@@ -126,6 +126,21 @@ jobs:
                   raise SystemExit("Could not locate bundled curl configure option")
               p.write_text("\n".join(lines) + "\n")
           PY
+          # Force Dolphin to use its bundled Zstandard instead of host pkg-config
+          # results; otherwise HAVE_ZSTD is enabled without a PS4-visible zstd.h.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("dolphinps4/scripts/configure-dolphin.sh")
+          s = p.read_text()
+          marker = "    -DUSE_SYSTEM_CURL=OFF \\\\\n"
+          replacement = "    -DUSE_SYSTEM_ZSTD=OFF \\\\\n" + marker
+          if "    -DUSE_SYSTEM_ZSTD=OFF" not in s:
+              if marker not in s:
+                  raise SystemExit("Could not locate configure option insertion point for bundled Zstandard")
+              s = s.replace(marker, replacement, 1)
+              p.write_text(s)
+          print("Configured bundled Zstandard for the PS4 cross-build")
+          PY
           grep -n -- "fuse-ld" dolphinps4/scripts/build-mesa.sh
           if grep -q -- "-fuse-ld=\\$OPENORBIS/bin/ld.lld" dolphinps4/scripts/build-mesa.sh; then
             sed -i "s|-fuse-ld=\\$OPENORBIS/bin/ld.lld|-fuse-ld=lld|g" dolphinps4/scripts/build-mesa.sh
