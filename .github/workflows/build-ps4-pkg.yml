@@ -169,6 +169,8 @@ jobs:
             set(HAVE_SYS_UN_H 0)
             set(HAVE_IFADDRS_H 0)
             set(HAVE_NET_IF_H 0)
+            # Without net/if.h, prevent curl from compiling the ioctl/ifreq path in if2ip.c.
+            set(HAVE_IOCTL_SIOCGIFADDR 0)
             set(HAVE_GETIFADDRS 0)
             set(HAVE_GETRLIMIT 0)
             set(HAVE_SETRLIMIT 0)
