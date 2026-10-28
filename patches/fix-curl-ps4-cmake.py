@@ -38,14 +38,14 @@ c_text = curl_cmake.read_text()
 # sysroot does not provide a complete sockaddr_un ABI. Override that default before
 # curl evaluates its ENABLE_UNIX_SOCKETS option and before feature summary generation.
 unix_anchor = (
-    '    include("\${CMAKE_CURRENT_SOURCE_DIR}/CMake/unix-cache.cmake")\\n'
+    '    include("${CMAKE_CURRENT_SOURCE_DIR}/CMake/unix-cache.cmake")\n'
     '    message(STATUS "Pre-filling feature detection results for UNIX")'
 )
 unix_insert = (
-    '    include("\${CMAKE_CURRENT_SOURCE_DIR}/CMake/unix-cache.cmake")\\n'
-    '    if(PS4)\\n'
-    '      set(USE_UNIX_SOCKETS OFF)\\n'
-    '    endif()\\n'
+    '    include("${CMAKE_CURRENT_SOURCE_DIR}/CMake/unix-cache.cmake")\n'
+    '    if(PS4)\n'
+    '      set(USE_UNIX_SOCKETS OFF)\n'
+    '    endif()\n'
     '    message(STATUS "Pre-filling feature detection results for UNIX")'
 )
 if '      set(USE_UNIX_SOCKETS OFF)' not in c_text:
