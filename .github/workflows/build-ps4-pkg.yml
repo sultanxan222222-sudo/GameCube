@@ -398,7 +398,7 @@ jobs:
               getHeap();
               return g_heapSize;
           }
-'''
+          '''
           if block not in s:
               raise SystemExit("Expected duplicate heap diagnostics block not found in ps4_runtime.cpp; refusing unsafe edit")
           p.write_text(s.replace(block, "", 1))
