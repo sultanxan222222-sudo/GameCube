@@ -1,0 +1,435 @@
+name: Build DolphinPS4 PKG
+run-name: GameCube PS4 PKG build (${{ github.ref_name }})
+
+on:
+  # Run the reviewed build once on changes to the integration branch; keep manual dispatch too.
+  push:
+    branches:
+      - work/dolphinps4-integration
+    paths:
+      - '.github/workflows/build-ps4-pkg.yml'
+      - 'patches/**'
+      - 'xmb/**'
+      - 'sce_sys/**'
+      - 'scripts/**'
+      - 'BUILD_STATUS.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dolphinps4-pkg-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - name: Checkout project customizations
+        uses: actions/checkout@v4
+        with:
+          path: custom
+
+      - name: Install host build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential git curl wget cmake ninja-build python3 python3-pip python3-venv pkg-config meson python3-mako glslang-tools libxml2 libxml2-dev libgpgme-dev libarchive-tools autoconf libtool nasm zlib1g-dev libffi-dev
+          python3 -m pip install --break-system-packages Pillow PyYAML mako
+
+      - name: Install official OpenOrbis PS4 toolchain
+        shell: bash
+        run: |
+          set -euxo pipefail
+          TOOLCHAIN_URL="https://github.com/OpenOrbis/OpenOrbis-PS4-Toolchain/releases/download/v0.5.4/toolchain-llvm-18.tar.gz"
+          TOOLCHAIN_SHA256="3c7cd5bb593ca74fa1c13fd59f3938dc0fc07985167f7275063019e63abe4526"
+          curl --fail --location --retry 4 --retry-all-errors "$TOOLCHAIN_URL" -o /tmp/openorbis.tar.gz
+          echo "$TOOLCHAIN_SHA256  /tmp/openorbis.tar.gz" | sha256sum --check -
+          sudo mkdir -p /opt/pacbrew/ps4/openorbis
+          sudo tar -xzf /tmp/openorbis.tar.gz -C /opt/pacbrew/ps4/openorbis
+          if [ ! -d /opt/pacbrew/ps4/openorbis/include ]; then
+            SDK_ROOT="$(find /opt/pacbrew/ps4/openorbis -mindepth 2 -maxdepth 3 -type d -name include -print -quit | xargs -r dirname)"
+            if [ -n "$SDK_ROOT" ]; then sudo cp -a "$SDK_ROOT"/. /opt/pacbrew/ps4/openorbis/; fi
+          fi
+          test -d /opt/pacbrew/ps4/openorbis/include
+          test -d /opt/pacbrew/ps4/openorbis/lib
+          if [ ! -x /opt/pacbrew/ps4/openorbis/bin/create-fself ]; then
+            FSELF="$(find /opt/pacbrew/ps4/openorbis -type f -name create-fself -perm -u+x -print -quit)"
+            test -n "$FSELF"
+            sudo ln -sf "$FSELF" /opt/pacbrew/ps4/openorbis/bin/create-fself
+          fi
+          sudo chmod +x /opt/pacbrew/ps4/openorbis/bin/create-fself
+          echo "OPENORBIS=/opt/pacbrew/ps4/openorbis" >> "$GITHUB_ENV"
+          echo "/opt/pacbrew/ps4/openorbis/bin" >> "$GITHUB_PATH"
+          ls -la /opt/pacbrew/ps4/openorbis
+          /opt/pacbrew/ps4/openorbis/bin/create-fself --help || true
+
+      - name: Install LLVM 21
+        shell: bash
+        run: |
+          set -euxo pipefail
+          wget -q https://apt.llvm.org/llvm.sh -O /tmp/llvm.sh
+          chmod +x /tmp/llvm.sh
+          sudo /tmp/llvm.sh 21
+          sudo apt-get install -y clang-21 lld-21 llvm-21
+          clang-21 --version
+
+      - name: Fetch DolphinPS4 source
+        shell: bash
+        run: |
+          set -euxo pipefail
+          git clone --recurse-submodules https://github.com/iHaiDeeZ/DolphinPS4.git dolphinps4
+          find dolphinps4/toolchain dolphinps4/scripts -type f -name "*.sh" -exec chmod +x {} +
+          if [ -d dolphinps4/toolchain/bin ]; then find dolphinps4/toolchain/bin -type f -exec chmod +x {} +; fi
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("dolphinps4/scripts/ps4-env.sh")
+          s = p.read_text()
+          old = 'source "$OPENORBIS/ps4vars.sh"'
+          new = '''if [ -f "$OPENORBIS/ps4vars.sh" ]; then
+              source "$OPENORBIS/ps4vars.sh"
+          else
+              export PS4SDK="$OPENORBIS"
+              export OO_PS4_TOOLCHAIN="$OPENORBIS"
+              export PATH="$OPENORBIS/bin:$PATH"
+          fi'''
+          if old not in s: raise SystemExit("Expected ps4-env.sh source line not found")
+          p.write_text(s.replace(old, new, 1))
+          p = Path("dolphinps4/scripts/ps4-env.sh")
+          s = p.read_text()
+          old = 'if ldd "$OPENORBIS/bin/ld.lld" | grep -q "libxml2.so.2 => not found"; then'
+          new = 'if [ -x "$OPENORBIS/bin/ld.lld" ] && ldd "$OPENORBIS/bin/ld.lld" | grep -q "libxml2.so.2 => not found"; then'
+          if old not in s: raise SystemExit("Expected PacBrew linker check not found")
+          p.write_text(s.replace(old, new, 1))
+          p = Path("dolphinps4/scripts/build-mesa.sh")
+          s = p.read_text()
+          old = "'-fuse-ld=$OPENORBIS/bin/ld.lld'"
+          new = "'-fuse-ld=lld'"
+          if old not in s: raise SystemExit("Expected Mesa linker flag not found")
+          p.write_text(s.replace(old, new, 1))
+          modern = Path("dolphinps4/toolchain/ps4-love-modern.cmake")
+          base = Path("dolphinps4/toolchain/ps4-dolphin.cmake")
+          if not base.is_file() or "set(CMAKE_C_LINK_EXECUTABLE" not in base.read_text():
+              raise SystemExit("Self-contained ps4-dolphin.cmake is missing or unexpected")
+          modern.write_text(base.read_text())
+          # Curl's cross-compile header probes fail against the OpenOrbis sysroot.
+          # Use its maintained Unix feature cache; PS4-specific unavailable calls
+          # are disabled after that cache is loaded in Curl's CMakeLists.txt.
+          p = Path("dolphinps4/scripts/configure-dolphin.sh")
+          lines = p.read_text().splitlines()
+          if not any("-D_CURL_PREFILL=ON" in line for line in lines):
+              for i, line in enumerate(lines):
+                  if "-DUSE_SYSTEM_CURL=OFF" in line:
+                      lines.insert(i + 1, "    -D_CURL_PREFILL=ON \\")
+                      break
+              else:
+                  raise SystemExit("Could not locate bundled curl configure option")
+              p.write_text("\n".join(lines) + "\n")
+          PY
+          # Keep optional compression libraries bundled for the PS4 cross-build.
+          # Use chr(92) for CMake's continuation slash to avoid Python quoting errors.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("dolphinps4/scripts/configure-dolphin.sh")
+          lines = p.read_text().splitlines()
+          changed = False
+          for option in ("-DUSE_SYSTEM_CURL=OFF", "-DUSE_SYSTEM_ZSTD=OFF"):
+              if not any(option in line for line in lines):
+                  for i, line in enumerate(lines):
+                      if "-DUSE_SYSTEM_CURL=OFF" in line:
+                          lines.insert(i + 1, "    " + option + " " + chr(92))
+                          changed = True
+                          break
+                  else:
+                      raise SystemExit("Could not locate configure option insertion point: " + option)
+          if changed:
+              p.write_text("\n".join(lines) + "\n")
+          print("Configured bundled Curl/Zstandard for the PS4 cross-build")
+          PY
+          grep -n -- "fuse-ld" dolphinps4/scripts/build-mesa.sh
+          if grep -q -- "-fuse-ld=\\$OPENORBIS/bin/ld.lld" dolphinps4/scripts/build-mesa.sh; then
+            sed -i "s|-fuse-ld=\\$OPENORBIS/bin/ld.lld|-fuse-ld=lld|g" dolphinps4/scripts/build-mesa.sh
+          fi
+          ! grep -q -- "-fuse-ld=\\$OPENORBIS/bin/ld.lld" dolphinps4/scripts/build-mesa.sh
+          git -C dolphinps4 rev-parse HEAD
+          install -D custom/xmb/lang/ru.ini dolphinps4/xmb/lang/ru.ini
+
+      - name: Prepare PS4 build tree
+        shell: bash
+        run: |
+          set -euxo pipefail
+          export PSB="$HOME/dolphinps4-build"
+          mkdir -p "$PSB/src" "$PSB/out"
+          ln -s "$GITHUB_WORKSPACE/dolphinps4" "$PSB/project"
+          echo "PSB=$PSB" >> "$GITHUB_ENV"
+          echo "PS4_BUILD_ROOT=$PSB" >> "$GITHUB_ENV"
+          git clone https://github.com/dolphin-emu/dolphin.git "$PSB/src/dolphin"
+          git -C "$PSB/src/dolphin" checkout 771fb154059c5812d6a715a23226249cc42877a2
+          git -C "$PSB/src/dolphin" submodule update --init --recursive
+          git -C "$PSB/src/dolphin" apply "$GITHUB_WORKSPACE/dolphinps4/patches/dolphin-ps4.patch"
+          python3 "$GITHUB_WORKSPACE/custom/patches/fix-curl-ps4-cmake.py" "$PSB/src/dolphin"
+          # Curl's generic Unix cache predicts several APIs that the PS4 kernel lacks.
+          # Apply the overrides after curl loads the cache, before feature tests/config.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path(__import__("os").environ["PSB"]) / "src/dolphin/Externals/curl/curl/CMakeLists.txt"
+          s = p.read_text()
+          anchor = 'if(AMIGA)\n  set(HAVE_GETADDRINFO 0)  # Breaks the build when detected and used.\nendif()'
+          block = '''if(PS4)
+            # OpenOrbis/PS4 lacks these FreeBSD/Linux optional interfaces.
+            set(HAVE_ACCEPT4 0)
+            set(HAVE_EVENTFD 0)
+            set(HAVE_SYS_EVENTFD_H 0)
+            set(HAVE_SYS_FILIO_H 0)
+            set(HAVE_SYS_PARAM_H 0)
+            set(HAVE_SYS_POLL_H 0)
+            set(HAVE_SYS_RESOURCE_H 0)
+            set(HAVE_SYS_SELECT_H 0)
+            set(HAVE_SYS_SOCKIO_H 0)
+            set(HAVE_SYS_UN_H 0)
+            set(HAVE_IFADDRS_H 0)
+            set(HAVE_NET_IF_H 0)
+            # OpenOrbis lacks if_nametoindex; keep curl's IPv6 zone parsing on numeric IDs.
+            set(HAVE_IF_NAMETOINDEX 0)
+            # OpenOrbis does not declare if_nametoindex in this target sysroot.
+            set(HAVE_IF_NAMETOINDEX 0)
+            # Without net/if.h, prevent curl from compiling the ioctl/ifreq path in if2ip.c.
+            set(HAVE_IOCTL_SIOCGIFADDR 0)
+            set(HAVE_GETIFADDRS 0)
+            set(HAVE_GETRLIMIT 0)
+            set(HAVE_SETRLIMIT 0)
+            set(HAVE_PIPE2 0)
+            # Do not let curl enable Unix-domain socket code (PS4 supports TCP/IP only here).
+            set(ENABLE_UNIX_SOCKETS OFF CACHE BOOL "Disable Unix domain sockets on PS4" FORCE)
+            # The OpenOrbis target is x86_64: these ABI sizes are fixed for PS4.
+            set(HAVE_SIZEOF_OFF_T 1)
+            set(SIZEOF_OFF_T 8)
+            set(HAVE_SIZEOF_CURL_OFF_T 1)
+            set(SIZEOF_CURL_OFF_T 8)
+            set(HAVE_SIZEOF_CURL_SOCKET_T 1)
+            set(SIZEOF_CURL_SOCKET_T 4)
+            set(HAVE_SIZEOF_SIZE_T 1)
+            set(SIZEOF_SIZE_T 8)
+            set(HAVE_SIZEOF_SSIZE_T 1)
+            set(SIZEOF_SSIZE_T 8)
+            set(HAVE_SIZEOF_TIME_T 1)
+            set(SIZEOF_TIME_T 8)
+          endif()
+
+          '''
+          if anchor not in s:
+              raise SystemExit("Could not locate Curl feature-cache insertion point")
+          if "OpenOrbis/PS4 lacks these FreeBSD/Linux optional interfaces." not in s:
+              s = s.replace(anchor, block + anchor, 1)
+          p.write_text(s)
+          print("Applied PS4-specific Curl feature overrides")
+          PY
+          # The pinned Dolphin revision configures minizip-ng with ZSTD enabled,
+          # but its bundled Zstandard include target is not propagated to the PS4
+          # cross-compile. Disable only optional ZIP Zstandard support; other
+          # archive/compression support remains enabled.
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          p = Path(os.environ["PSB"]) / "src/dolphin/Externals/minizip-ng/CMakeLists.txt"
+          s = p.read_text()
+          marker = "set(MZ_BZIP2 OFF)"
+          if marker not in s:
+              raise SystemExit("Could not locate minizip-ng BZIP2 setting in " + str(p))
+          if "set(MZ_ZSTD OFF)" not in s.splitlines():
+              s = s.replace(marker, marker + "\nset(MZ_ZSTD OFF)", 1)
+          if "set(MZ_ZSTD OFF)" not in s.splitlines():
+              raise SystemExit("Failed to disable optional minizip-ng Zstandard support")
+          p.write_text(s)
+          print("Disabled optional minizip-ng Zstandard support for PS4 cross-build")
+          PY
+          cd "$PSB/src/dolphin"
+          python3 "$GITHUB_WORKSPACE/custom/patches/enable-usb-game-discovery.py"
+          cd "$GITHUB_WORKSPACE"
+          git clone --depth 1 --branch mesa-26.0.8 https://gitlab.freedesktop.org/mesa/mesa.git "$PSB/src/mesa"
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          root = Path(os.environ["PSB"]) / "src/mesa"
+          changed = []
+          for p in root.rglob("meson.build"):
+              lines = p.read_text(errors="replace").splitlines(keepends=True)
+              updated = []
+              count = 0
+              for line in lines:
+                  if "qsort_s" in line and ":" in line and not line.lstrip().startswith("#"):
+                      updated.append("# PS4/OpenOrbis fallback: " + line)
+                      count += 1
+                  else:
+                      updated.append(line)
+              if count:
+                  p.write_text("".join(updated))
+                  changed.append((str(p), count))
+          if not changed:
+              hits = [str(p) for p in root.rglob("meson.build") if "qsort_s" in p.read_text(errors="replace")]
+              raise SystemExit("qsort_s probe not found in Meson build files; candidate files: " + repr(hits))
+          print("Disabled Mesa qsort_s probe:", changed)
+          PY
+          git -C "$PSB/src/mesa" apply "$GITHUB_WORKSPACE/dolphinps4/patches/mesa-ps4.patch"
+          git clone --depth 1 https://gitlab.freedesktop.org/mesa/drm.git "$PSB/src/libdrm"
+
+      - name: Build PS4 C++ runtime
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd "$GITHUB_WORKSPACE/dolphinps4"
+          bash toolchain/build-libcxx.sh
+          bash toolchain/build-runtime.sh
+
+      - name: Build Mesa RADV for PS4
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd "$GITHUB_WORKSPACE/dolphinps4"
+          python3 -m venv "$PSB/mesa-venv"
+          "$PSB/mesa-venv/bin/pip" install meson mako PyYAML packaging
+          export PATH="$PSB/mesa-venv/bin:$PATH"
+          bash scripts/build-mesa.sh setup
+
+      - name: Configure and compile Dolphin
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd "$GITHUB_WORKSPACE/dolphinps4"
+          # Follow the upstream DolphinPS4 build instructions. Do not rewrite
+          # generated Ninja internals: that workaround caused repeated failures.
+          bash scripts/configure-dolphin.sh
+          test -s "$PSB/build/dolphin/build.ninja"
+          # Remove the host include only when CMake actually leaks it. Newer
+          # configure results may already be clean, which must not fail the build.
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          p = Path(os.environ["PSB"]) / "build/dolphin/build.ninja"
+          s = p.read_text()
+          # Both spellings have appeared in generated Ninja commands. Removing only
+          # -I/usr/include missed the actual -isystem /usr/include leak, which made
+          # the PS4 cross-compiler include the Ubuntu host stdint.h and fail on
+          # bits/libc-header-start.h. Strip both forms from generated commands.
+          replacements = (
+              (" -I/usr/include", ""),
+              (" -isystem /usr/include", ""),
+          )
+          total = 0
+          for flag, replacement in replacements:
+              count = s.count(flag)
+              if count:
+                  s = s.replace(flag, replacement)
+                  total += count
+          if total:
+              p.write_text(s)
+              print(f"Removed {total} host /usr/include flags from PS4 Ninja build")
+          else:
+              print("No host /usr/include leakage detected; leaving Ninja file unchanged")
+          # Clang's driver rejects GNU ld's bare --wrap options. Route these
+          # options through the linker, without touching already-correct -Wl forms.
+          import re
+          fixed, count = re.subn(r"(?<!-Wl,)--wrap=", "-Wl,--wrap=", s)
+          if count:
+              s = fixed
+              print(f"Routed {count} allocator/runtime --wrap options through lld")
+          else:
+              print("No bare --wrap linker options found in generated Ninja commands")
+          # Clang's driver also rejects GNU ld's bare whole-archive switches.
+          # Forward them explicitly to the linker while preserving their order.
+          for flag in ("whole-archive", "no-whole-archive"):
+              s, routed = re.subn(r"(?<!-Wl,)--" + flag + r"\b", "-Wl,--" + flag, s)
+              if routed:
+                  print(f"Routed {routed} --{flag} options through lld")
+          p.write_text(s)
+          PY
+          # The pinned Dolphin revision's LZ4 submodule is present, but its
+          # public header directory is not propagated into this cross-build's
+          # generated Core compile commands. Add that bundled include directory
+          # to the generated Ninja file rather than depending on host LZ4 headers.
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          p = Path(os.environ["PSB"]) / "build/dolphin/build.ninja"
+          s = p.read_text()
+          core_include = f"-I{os.environ['PSB']}/src/dolphin/Source/Core"
+          lz4_include = f"-I{os.environ['PSB']}/src/dolphin/Externals/lz4/lz4/lib"
+          if not (Path(os.environ["PSB"]) / "src/dolphin/Externals/lz4/lz4/lib/lz4.h").is_file():
+              raise SystemExit("Bundled Dolphin LZ4 header is missing; submodule checkout is incomplete")
+          if lz4_include not in s:
+              if core_include not in s:
+                  raise SystemExit("Could not locate Dolphin Core include anchor in generated Ninja file")
+              s = s.replace(core_include, lz4_include + " " + core_include)
+              p.write_text(s)
+              print("Added bundled LZ4 include path to Dolphin cross-build")
+          else:
+              print("Bundled LZ4 include path already present")
+          PY
+          # Build the bundled LZ4 static library for the PS4 target. The generated
+          # Dolphin link command references -llz4, but its search paths omit the
+          # bundled library and accidentally resolve only host paths.
+          LZ4_DIR="$PSB/src/dolphin/Externals/lz4/lz4/lib"
+          test -s "$LZ4_DIR/lz4.c"
+          mkdir -p "$PSB/sysroot/lib" "$PSB/lz4-objects"
+          rm -f "$PSB/lz4-objects"/*.o "$PSB/sysroot/lib/liblz4.a"
+          for src in "$LZ4_DIR"/*.c; do
+            [ -f "$src" ] || continue
+            obj="$PSB/lz4-objects/$(basename "${src%.c}").o"
+            clang-21 --target=x86_64-pc-freebsd12-elf --sysroot="$OPENORBIS" -D_GNU_SOURCE -D__PS4__ -D__ORBIS__ -D__OPENORBIS__ -O2 -fPIC -I"$LZ4_DIR" -I"$OPENORBIS/include" -c "$src" -o "$obj"
+          done
+          test -n "$(find "$PSB/lz4-objects" -maxdepth 1 -name '*.o' -print -quit)"
+          llvm-ar-21 rcs "$PSB/sysroot/lib/liblz4.a" "$PSB"/lz4-objects/*.o
+          test -s "$PSB/sysroot/lib/liblz4.a"
+          # The runtime diagnostics are also provided by ps4_malloc.c in the
+          # runtime archive. Keep a single definition to avoid duplicate symbols
+          # at the final link; allocator behavior itself is unchanged.
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          p = Path(os.environ["GITHUB_WORKSPACE"]) / "dolphinps4/port/ps4_runtime.cpp"
+          s = p.read_text()
+          block = '''// Diagnostics.
+const char* ps4rt_heap_source(void) {
+    getHeap();
+    return g_heapPool;
+}
+size_t ps4rt_heap_size(void) {
+    getHeap();
+    return g_heapSize;
+}
+'''
+          if block not in s:
+              raise SystemExit("Expected duplicate heap diagnostics block not found in ps4_runtime.cpp; refusing unsafe edit")
+          p.write_text(s.replace(block, "", 1))
+          print("Removed duplicate heap diagnostics; runtime archive remains authoritative")
+          PY
+          # Build only the installable no-GUI app target. The upstream default
+          # also builds traversal_server, a host-side utility that is not shipped
+          # in the PS4 PKG and fails to link against the PS4 malloc/runtime hooks.
+          bash scripts/build-dolphin.sh dolphin-nogui_eboot
+
+
+      - name: Package PKG and calculate checksum
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cd "$GITHUB_WORKSPACE/dolphinps4"
+          DOLPHIN_PS4_VERSION=01.00 bash scripts/package-dolphin.sh
+          PKG="$(find "$PSB/out" -maxdepth 1 -type f -name '*.pkg' -print -quit)"
+          test -n "$PKG"
+          test -s "$PKG"
+          sha256sum "$PKG" | tee "$PSB/out/SHA256SUMS.txt"
+          stat --printf='PKG_SIZE_BYTES=%s\n' "$PKG" | tee "$PSB/out/BUILD_INFO.txt"
+          printf 'SOURCE_COMMIT=%s\n' "$(git -C "$GITHUB_WORKSPACE/dolphinps4" rev-parse HEAD)" >> "$PSB/out/BUILD_INFO.txt"
+
+      - name: Upload installable PKG
+        uses: actions/upload-artifact@v4
+        with:
+          name: GameCube-PS4Pro-PKG
+          path: |
+            ~/dolphinps4-build/out/*.pkg
+            ~/dolphinps4-build/out/SHA256SUMS.txt
+            ~/dolphinps4-build/out/BUILD_INFO.txt
+          if-no-files-found: error
+          retention-days: 14
