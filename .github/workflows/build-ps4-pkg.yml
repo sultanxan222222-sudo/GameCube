@@ -1,4 +1,5 @@
 name: Build DolphinPS4 PKG
+run-name: GameCube PS4 PKG build (${{ github.ref_name }})
 
 on:
   # Run the reviewed build once on changes to the integration branch; keep manual dispatch too.
