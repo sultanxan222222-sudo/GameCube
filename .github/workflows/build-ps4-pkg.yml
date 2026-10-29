@@ -402,11 +402,11 @@ jobs:
           p = Path("port/ps4_runtime.cpp")
           s = p.read_text()
           old = "int32_t sceKernelJitCreateSharedMemory(const char* name, size_t len, int32_t max_prot, int32_t* fd);"
-          if old in s and old + " __attribute__((weak));" not in s:
-              s = s.replace(old, old + " __attribute__((weak));", 1)
+          if old in s and old[:-1] + " __attribute__((weak));" not in s:
+              s = s.replace(old, old[:-1] + " __attribute__((weak));", 1)
           old = "int32_t sceKernelJitCreateAliasOfSharedMemory(int32_t fd, int32_t max_prot, int32_t* alias_fd);"
-          if old in s and old + " __attribute__((weak));" not in s:
-              s = s.replace(old, old + " __attribute__((weak));", 1)
+          if old in s and old[:-1] + " __attribute__((weak));" not in s:
+              s = s.replace(old, old[:-1] + " __attribute__((weak));", 1)
           old = "case 4: {"
           if "case 4: {\n        if (!sceKernelJitCreateSharedMemory)" not in s:
               if old not in s: raise SystemExit("JIT method 4 insertion point not found")
@@ -429,6 +429,10 @@ jobs:
           if "int pthread_mutexattr_setrobust(pthread_mutexattr_t*, int)" not in s:
               if marker not in s: raise SystemExit("Runtime compatibility insertion point not found")
               s = s.replace(marker, stubs + marker, 1)
+          if "sceKernelJitCreateSharedMemory(const char* name, size_t len, int32_t max_prot, int32_t* fd) __attribute__((weak));" not in s:
+              raise SystemExit("Weak JIT shared-memory declaration was not applied")
+          if "sceKernelJitCreateAliasOfSharedMemory(int32_t fd, int32_t max_prot, int32_t* alias_fd) __attribute__((weak));" not in s:
+              raise SystemExit("Weak JIT alias declaration was not applied")
           p.write_text(s)
           print("Applied OpenOrbis optional API compatibility patch")
           PY
