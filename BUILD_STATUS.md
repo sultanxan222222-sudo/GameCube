@@ -39,3 +39,12 @@
 - https://github.com/iHaiDeeZ/DolphinPS4
 - https://github.com/iHaiDeeZ/DolphinPS4/blob/main/BUILDING.md
 - https://github.com/iHaiDeeZ/DolphinPS4/blob/main/scripts/package-dolphin.sh
+
+
+## Проверка сборки №82 (2026-10-30)
+
+- Workflow run: https://github.com/sultanxan222222-sudo/GameCube/actions/runs/40952796050
+- Commit: `b3a42ec761ed99a7d04d95332802d93799098958`.
+- Установка зависимостей, OpenOrbis, LLVM 21, подготовка исходников, PS4 C++ runtime и Mesa RADV отмечены GitHub Actions как успешные.
+- Этап `Configure and compile Dolphin` остался в состоянии `in_progress`; обновление статуса не менялось, журналы задания недоступны через API, артефактов нет. Это не подтверждённая сборка и PKG не создан.
+- Следующий запуск должен подтвердить прохождение этапа компиляции и упаковки; публиковать ссылку можно только при наличии загруженного `.pkg` и контрольной суммы.
