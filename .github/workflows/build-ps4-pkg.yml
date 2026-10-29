@@ -390,14 +390,14 @@ jobs:
           p = Path(os.environ["GITHUB_WORKSPACE"]) / "dolphinps4/port/ps4_runtime.cpp"
           s = p.read_text()
           block = '''// Diagnostics.
-const char* ps4rt_heap_source(void) {
-    getHeap();
-    return g_heapPool;
-}
-size_t ps4rt_heap_size(void) {
-    getHeap();
-    return g_heapSize;
-}
+          const char* ps4rt_heap_source(void) {
+              getHeap();
+              return g_heapPool;
+          }
+          size_t ps4rt_heap_size(void) {
+              getHeap();
+              return g_heapSize;
+          }
 '''
           if block not in s:
               raise SystemExit("Expected duplicate heap diagnostics block not found in ps4_runtime.cpp; refusing unsafe edit")
