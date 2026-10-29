@@ -32,6 +32,16 @@ jobs:
         with:
           path: custom
 
+      - name: Verify build source and customization checkout
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test -f "$GITHUB_WORKSPACE/custom/BUILD_STATUS.md"
+          test -f "$GITHUB_WORKSPACE/custom/scripts/remove-duplicate-heap-diagnostics.py"
+          printf 'WORKFLOW_COMMIT=%s\n' "$GITHUB_SHA"
+          printf 'BRANCH=%s\n' "$GITHUB_REF_NAME"
+          git -C "$GITHUB_WORKSPACE/custom" rev-parse HEAD
+
       - name: Install host build dependencies
         run: |
           sudo apt-get update
