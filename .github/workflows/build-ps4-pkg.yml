@@ -523,7 +523,8 @@ jobs:
           # by adding every missing parent directory before pkg_build.
           python3 - <<'PY'
           from pathlib import Path
-          p = Path("dolphinps4/scripts/make-pkg.sh")
+          # This step runs from $GITHUB_WORKSPACE/dolphinps4, so use the repository-relative scripts path.
+          p = Path("scripts/make-pkg.sh")
           s = p.read_text()
           old = '( cd "$STAGE" && "$TOOLS/create-gp4" -out pkg.gp4 --content-id="$CONTENT_ID" --path . ) >/dev/null\nmkdir -p "$OUT"'
           new = '''( cd "$STAGE" && "$TOOLS/create-gp4" -out pkg.gp4 --content-id="$CONTENT_ID" --path . ) >/dev/null
