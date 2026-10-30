@@ -436,6 +436,50 @@ jobs:
           p.write_text(s)
           print("Applied OpenOrbis optional API compatibility patch")
           PY
+          # create-fself rejects the unresolved JIT-SHM import even when declared weak.
+          # Provide local ENOSYS fallbacks and disable only the optional JIT-SHM method;
+          # Dolphin retains the mmap/mprotect execution paths.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("port/ps4_runtime.cpp")
+          s = p.read_text()
+          decl1 = "int32_t sceKernelJitCreateSharedMemory(const char* name, size_t len, int32_t max_prot, int32_t* fd) __attribute__((weak));"
+          def1 = """int32_t sceKernelJitCreateSharedMemory(const char* name, size_t len, int32_t max_prot, int32_t* fd) {
+              (void)name; (void)len; (void)max_prot;
+              if (fd) *fd = -1;
+              return -1;
+          }"""
+          decl2 = "int32_t sceKernelJitCreateAliasOfSharedMemory(int32_t fd, int32_t max_prot, int32_t* alias_fd) __attribute__((weak));"
+          def2 = """int32_t sceKernelJitCreateAliasOfSharedMemory(int32_t fd, int32_t max_prot, int32_t* alias_fd) {
+              (void)fd; (void)max_prot;
+              if (alias_fd) *alias_fd = -1;
+              return -1;
+          }"""
+          if decl1 in s:
+              s = s.replace(decl1, def1, 1)
+          elif def1 not in s:
+              raise SystemExit("JIT shared-memory declaration/fallback not found")
+          if decl2 in s:
+              s = s.replace(decl2, def2, 1)
+          elif def2 not in s:
+              raise SystemExit("JIT alias declaration/fallback not found")
+          # Force method 4 to report unsupported rather than calling the fallback.
+          case = "case 4: {"
+          disabled = "case 4: {\n        g_execError = ENOSYS; return nullptr;"
+          if disabled not in s:
+              if case not in s:
+                  raise SystemExit("JIT execution method 4 insertion point not found")
+              s = s.replace(case, disabled, 1)
+          # The alias probe is optional; don't spend time probing an API unavailable in OpenOrbis.
+          probe = "void probeJitAlias() {"
+          probe_disabled = "void probeJitAlias() {\n    heapLog(\"[dolphin] exec: JIT-SHM unavailable; using mmap/mprotect\");\n    return;"
+          if probe_disabled not in s:
+              if probe not in s:
+                  raise SystemExit("JIT alias probe insertion point not found")
+              s = s.replace(probe, probe_disabled, 1)
+          p.write_text(s)
+          print("Replaced optional JIT-SHM imports with local ENOSYS fallbacks")
+          PY
           # Build only the installable no-GUI app target. The upstream default
           # also builds traversal_server, a host-side utility that is not shipped
           # in the PS4 PKG and fails to link against the PS4 malloc/runtime hooks.
