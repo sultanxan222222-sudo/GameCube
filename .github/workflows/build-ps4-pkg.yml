@@ -500,6 +500,20 @@ jobs:
           bash scripts/build-dolphin.sh dolphin-nogui_eboot
 
 
+      - name: Install legacy OpenSSL runtime for OpenOrbis PkgTool
+        shell: bash
+        run: |
+          set -euxo pipefail
+          # OpenOrbis 0.5.4 ships a legacy .NET PkgTool.Core that probes for
+          # libssl.so.1.1. Ubuntu 24.04 provides OpenSSL 3 only, so install the
+          # isolated compatibility runtime required by this packaging utility.
+          curl --fail --location --retry 4 --retry-all-errors \
+            "https://security.ubuntu.com/ubuntu/pool/main/o/openssl/libssl1.1_1.1.1f-1ubuntu2.24_amd64.deb" \
+            -o /tmp/libssl1.1_compat.deb
+          sudo dpkg -i /tmp/libssl1.1_compat.deb
+          ldconfig -p | grep -F "libssl.so.1.1"
+          ldconfig -p | grep -F "libcrypto.so.1.1"
+
       - name: Package PKG and calculate checksum
         shell: bash
         run: |
