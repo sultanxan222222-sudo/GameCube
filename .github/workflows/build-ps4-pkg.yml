@@ -163,10 +163,24 @@ jobs:
           fi
           ! grep -q -- "-fuse-ld=\\$OPENORBIS/bin/ld.lld" dolphinps4/scripts/build-mesa.sh
           git -C dolphinps4 rev-parse HEAD
-          # OpenOrbis create-gp4 supports -path and recursively enumerates regular files.
-          # Keep the upstream -path mode: passing directory names through -files
-          # makes LibOrbisPkg's PFS tree parser fail with "Sequence contains no elements".
-          grep -F -- ' --path . )' dolphinps4/scripts/make-pkg.sh
+          # OpenOrbis 0.5.4 create-gp4 only supports -files (not -path).
+          # Pass regular files only: directory entries in -files break PkgTool's PFS tree parser.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("dolphinps4/scripts/make-pkg.sh")
+          s = p.read_text()
+          old = '( cd "$STAGE" && "$TOOLS/create-gp4" -out pkg.gp4 --content-id="$CONTENT_ID" --path . )'
+          new = '( cd "$STAGE" && "$TOOLS/create-gp4" -out pkg.gp4 --content-id="$CONTENT_ID" --files "$(find . -type f -printf \'%P \' | sort)" )'
+          if old not in s:
+              if new not in s:
+                  raise SystemExit("Expected upstream create-gp4 invocation not found")
+          else:
+              s = s.replace(old, new, 1)
+              p.write_text(s)
+          if new not in p.read_text():
+              raise SystemExit("create-gp4 -files patch was not applied")
+          print("Patched create-gp4 for OpenOrbis 0.5.4: regular files only")
+          PY
           install -D custom/xmb/lang/ru.ini dolphinps4/xmb/lang/ru.ini
 
       - name: Prepare PS4 build tree
