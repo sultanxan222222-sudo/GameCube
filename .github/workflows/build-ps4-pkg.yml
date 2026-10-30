@@ -163,23 +163,10 @@ jobs:
           fi
           ! grep -q -- "-fuse-ld=\\$OPENORBIS/bin/ld.lld" dolphinps4/scripts/build-mesa.sh
           git -C dolphinps4 rev-parse HEAD
-          # OpenOrbis v0.5.4 create-gp4 uses -files (not the obsolete -path flag)
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path("dolphinps4/scripts/make-pkg.sh")
-          s = p.read_text()
-          old = ' --path . )'
-          # OpenOrbis create-gp4 -files expects a space-separated list of files,
-          # not a directory. Passing "." records the stage directory itself as
-          # a PFS file and PkgTool.Core then crashes while reading its length.
-          new = ' --files "$(find . -mindepth 1 -printf \'%P \')" )'
-          if old in s:
-              s = s.replace(old, new, 1)
-              p.write_text(s)
-          elif ' --files . )' not in s:
-              raise SystemExit("Could not locate create-gp4 packaging argument")
-          print("Patched create-gp4 argument for current OpenOrbis CLI")
-          PY
+          # OpenOrbis create-gp4 supports -path and recursively enumerates regular files.
+          # Keep the upstream -path mode: passing directory names through -files
+          # makes LibOrbisPkg's PFS tree parser fail with "Sequence contains no elements".
+          grep -F -- ' --path . )' dolphinps4/scripts/make-pkg.sh
           install -D custom/xmb/lang/ru.ini dolphinps4/xmb/lang/ru.ini
 
       - name: Prepare PS4 build tree
