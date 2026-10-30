@@ -530,7 +530,7 @@ jobs:
           python3 - "$STAGE/pkg.gp4" <<'GP4PY'
           import sys
           import xml.etree.ElementTree as ET
-          from pathlib import PurePosixPath
+          from pathlib import Path, PurePosixPath
           gp4 = Path(sys.argv[1])
           tree = ET.parse(gp4)
           root = tree.getroot()
