@@ -169,7 +169,10 @@ jobs:
           p = Path("dolphinps4/scripts/make-pkg.sh")
           s = p.read_text()
           old = ' --path . )'
-          new = ' --files . )'
+          # OpenOrbis create-gp4 -files expects a space-separated list of files,
+          # not a directory. Passing "." records the stage directory itself as
+          # a PFS file and PkgTool.Core then crashes while reading its length.
+          new = ' --files "$(find . -type f -printf \'%P \')" )'
           if old in s:
               s = s.replace(old, new, 1)
               p.write_text(s)
