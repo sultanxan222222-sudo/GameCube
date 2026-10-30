@@ -517,6 +517,47 @@ jobs:
           p.write_text(s)
           print("Replaced optional JIT-SHM imports with local ENOSYS fallbacks")
           PY
+          # create-gp4 emits file paths as well as parent directories. The
+          # PkgTool expects directories in the GP4 tree to be explicit and files
+          # must never be treated as directories. Normalize the generated GP4 XML
+          # by adding every missing parent directory before pkg_build.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("dolphinps4/scripts/make-pkg.sh")
+          s = p.read_text()
+          old = '( cd "$STAGE" && "$TOOLS/create-gp4" -out pkg.gp4 --content-id="$CONTENT_ID" --path . ) >/dev/null\nmkdir -p "$OUT"'
+          new = '''( cd "$STAGE" && "$TOOLS/create-gp4" -out pkg.gp4 --content-id="$CONTENT_ID" --path . ) >/dev/null
+          python3 - "$STAGE/pkg.gp4" <<'GP4PY'
+          import sys
+          import xml.etree.ElementTree as ET
+          from pathlib import PurePosixPath
+          gp4 = Path(sys.argv[1])
+          tree = ET.parse(gp4)
+          root = tree.getroot()
+          files = root.find(".//files")
+          if files is None:
+              raise SystemExit("Generated GP4 has no <files> list")
+          existing = {el.get("orig_path", "").rstrip("/") for el in files}
+          parents = set()
+          for el in list(files):
+              raw = el.get("orig_path", "")
+              if not raw:
+                  continue
+              parts = PurePosixPath(raw).parts
+              for i in range(1, len(parts)):
+                  parents.add("/".join(parts[:i]))
+          for parent in sorted(parents, key=lambda x: (x.count("/"), x)):
+              if parent not in existing:
+                  ET.SubElement(files, "dir", {"orig_path": parent})
+          tree.write(gp4, encoding="utf-8", xml_declaration=True)
+          GP4PY
+          mkdir -p "$OUT"'''
+          if old not in s:
+              raise SystemExit("Could not find GP4 generation block in make-pkg.sh")
+          s = s.replace(old, new, 1)
+          p.write_text(s)
+          print("Added GP4 parent-directory normalization before packaging")
+          PY
           # Build only the installable no-GUI app target. The upstream default
           # also builds traversal_server, a host-side utility that is not shipped
           # in the PS4 PKG and fails to link against the PS4 malloc/runtime hooks.
