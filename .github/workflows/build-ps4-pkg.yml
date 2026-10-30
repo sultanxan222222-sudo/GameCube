@@ -163,6 +163,20 @@ jobs:
           fi
           ! grep -q -- "-fuse-ld=\\$OPENORBIS/bin/ld.lld" dolphinps4/scripts/build-mesa.sh
           git -C dolphinps4 rev-parse HEAD
+          # OpenOrbis v0.5.4 create-gp4 uses -files (not the obsolete -path flag)
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("dolphinps4/scripts/make-pkg.sh")
+          s = p.read_text()
+          old = ' --path . )'
+          new = ' --files . )'
+          if old in s:
+              s = s.replace(old, new, 1)
+              p.write_text(s)
+          elif ' --files . )' not in s:
+              raise SystemExit("Could not locate create-gp4 packaging argument")
+          print("Patched create-gp4 argument for current OpenOrbis CLI")
+          PY
           install -D custom/xmb/lang/ru.ini dolphinps4/xmb/lang/ru.ini
 
       - name: Prepare PS4 build tree
