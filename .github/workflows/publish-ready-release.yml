@@ -1,0 +1,58 @@
+name: Publish ready GameCube PS4 release
+run-name: Publish existing tested GameCube PS4 PKG
+
+on:
+  push:
+    branches:
+      - work/dolphinps4-integration
+    paths:
+      - '.github/workflows/publish-ready-release.yml'
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download the already successful PKG build
+        uses: actions/download-artifact@v4
+        with:
+          name: GameCube-PS4Pro-PKG
+          path: dist
+          repository: sultanxan222222-sudo/GameCube
+          run-id: 41039044602
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify release files
+        shell: bash
+        run: |
+          set -euo pipefail
+          find dist -maxdepth 2 -type f -printf '%P %s bytes\\n'
+          test -s dist/IV0000-DLPH00010_00-DOLPHIN000000000.pkg
+          test -s dist/SHA256SUMS.txt
+          test -s dist/BUILD_INFO.txt
+          cd dist
+          sha256sum --check SHA256SUMS.txt
+
+      - name: Publish public release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.0
+          name: GameCube for PS4 Pro — Ready Build
+          target_commitish: work/dolphinps4-integration
+          body: |
+            First public release of the existing working GameCube/DolphinPS4 build for PS4 Pro with HEN.
+
+            This is the already successful build from GitHub Actions run 41039044602, not the unfinished next development version.
+
+            Install the PKG on a compatible PS4 HEN system. Game compatibility and performance depend on the console and game.
+
+            Source and project modifications are provided in this repository. Dolphin upstream is licensed under GPL-2.0; see LICENSE and upstream notices.
+          files: |
+            dist/IV0000-DLPH00010_00-DOLPHIN000000000.pkg
+            dist/SHA256SUMS.txt
+            dist/BUILD_INFO.txt
+          draft: false
+          prerelease: false
