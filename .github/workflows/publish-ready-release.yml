@@ -30,11 +30,14 @@ jobs:
         run: |
           set -euo pipefail
           find dist -maxdepth 2 -type f -printf '%P %s bytes\\n'
-          test -s dist/IV0000-DLPH00010_00-DOLPHIN000000000.pkg
+          PKG=dist/IV0000-DLPH00010_00-DOLPHIN000000000.pkg
+          test -s "$PKG"
           test -s dist/SHA256SUMS.txt
           test -s dist/BUILD_INFO.txt
-          cd dist
-          sha256sum --check SHA256SUMS.txt
+          EXPECTED="$(awk '{print $1; exit}' dist/SHA256SUMS.txt)"
+          ACTUAL="$(sha256sum "$PKG" | awk '{print $1}')"
+          test "$EXPECTED" = "$ACTUAL"
+          echo "PKG SHA256 verified: $ACTUAL"
 
       - name: Publish public release
         uses: softprops/action-gh-release@v2
